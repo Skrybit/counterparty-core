@@ -161,10 +161,10 @@ def get_current_commit_hash(not_from_env=False):
 
         commit_hash = str(repo.head.target)
 
-        branch_name = repo.head.shorthand
         if repo.head_is_detached:
-            branch_name = "HEAD detached"
+            return commit_hash
 
+        branch_name = repo.head.shorthand
         return f"{branch_name} - {commit_hash}"
     except pygit2.GitError:  # pylint: disable=E1101
         return None

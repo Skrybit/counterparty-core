@@ -67,7 +67,7 @@ def test_get_commit_hash_detached_head(mock_repo):
             result = helpers.get_current_commit_hash()
 
             # Result verification
-            assert result == "HEAD detached - abcdef1234567890"
+            assert result == "abcdef1234567890"
 
 
 def test_get_commit_hash_no_repo():
