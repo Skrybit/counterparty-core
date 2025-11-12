@@ -35,6 +35,7 @@ counterparty-server start
 
 ## Codebase
 
+- Increase BURN_END_TESTNET3 to 99999999
 
 ## API
 
