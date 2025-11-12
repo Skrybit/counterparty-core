@@ -177,3 +177,14 @@ def test_parse_burn_multisig_address(
             },
         ],
     )
+
+
+def test_calculate_earned_quantity_testnet3_after_old_end(monkeypatch):
+    burn_amount = 50000000
+    monkeypatch.setattr(config, "TESTNET3", True, raising=False)
+    monkeypatch.setattr(config, "BURN_START", config.BURN_START_TESTNET3, raising=False)
+    monkeypatch.setattr(config, "BURN_END", config.BURN_END_TESTNET3, raising=False)
+
+    block_index = config.OLD_BURN_END_TESTNET3 + 10
+
+    assert burn.calculate_earned_quantity(burn_amount, block_index) == round(burn_amount * 1000)
