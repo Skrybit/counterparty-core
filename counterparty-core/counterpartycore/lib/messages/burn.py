@@ -95,9 +95,18 @@ def parse(db, tx):
             else:
                 burned = sent
 
-            total_time = config.BURN_END - config.BURN_START
-            partial_time = config.BURN_END - tx["block_index"]
-            multiplier = 1000 + (500 * Fraction(partial_time, total_time))
+            burn_start = config.BURN_START
+            calculation_burn_end = config.BURN_END
+            if config.TESTNET3:
+                calculation_burn_end = config.OLD_BURN_END_TESTNET3
+
+            total_time = calculation_burn_end - burn_start
+            # On testnet3 multipliers freeze at the legacy cutoff so late burns stay constant.
+            if tx["block_index"] >= calculation_burn_end:
+                multiplier = 1000
+            else:
+                partial_time = calculation_burn_end - tx["block_index"]
+                multiplier = 1000 + (500 * Fraction(partial_time, total_time))
             earned = round(burned * multiplier)
 
             # Credit source address with earned XCP.
