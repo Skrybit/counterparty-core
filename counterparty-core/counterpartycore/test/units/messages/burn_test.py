@@ -1,3 +1,5 @@
+from fractions import Fraction
+
 import pytest
 from counterpartycore.lib import config, exceptions
 from counterpartycore.lib.messages import burn
@@ -176,6 +178,59 @@ def test_parse_burn_multisig_address(
                 },
             },
         ],
+    )
+
+
+def test_calculate_earned_quantity_total_time_non_positive(monkeypatch):
+    burn_amount = 25000000
+    monkeypatch.setattr(config, "TESTNET3", False, raising=False)
+    monkeypatch.setattr(config, "BURN_START", 300, raising=False)
+    monkeypatch.setattr(config, "BURN_END", 300, raising=False)
+
+    assert burn.calculate_earned_quantity(burn_amount, 300) == round(burn_amount * 1000)
+
+
+def test_calculate_earned_quantity_mainnet_within_window(monkeypatch):
+    burn_amount = 40000000
+    monkeypatch.setattr(config, "TESTNET3", False, raising=False)
+    monkeypatch.setattr(config, "BURN_START", 100, raising=False)
+    monkeypatch.setattr(config, "BURN_END", 200, raising=False)
+
+    block_index = 150
+    total_time = config.BURN_END - config.BURN_START
+    partial_time = config.BURN_END - block_index
+    expected_multiplier = 1000 + 500 * Fraction(partial_time, total_time)
+
+    assert burn.calculate_earned_quantity(burn_amount, block_index) == round(
+        burn_amount * expected_multiplier
+    )
+
+
+def test_calculate_earned_quantity_mainnet_after_window(monkeypatch):
+    burn_amount = 40000000
+    monkeypatch.setattr(config, "TESTNET3", False, raising=False)
+    monkeypatch.setattr(config, "BURN_START", 100, raising=False)
+    monkeypatch.setattr(config, "BURN_END", 200, raising=False)
+
+    block_index = 205
+
+    assert burn.calculate_earned_quantity(burn_amount, block_index) == round(burn_amount * 1000)
+
+
+def test_calculate_earned_quantity_testnet3_before_old_end(monkeypatch):
+    burn_amount = 50000000
+    monkeypatch.setattr(config, "TESTNET3", True, raising=False)
+    monkeypatch.setattr(config, "BURN_START", 100, raising=False)
+    monkeypatch.setattr(config, "BURN_END", 250, raising=False)
+    monkeypatch.setattr(config, "OLD_BURN_END_TESTNET3", 180, raising=False)
+
+    block_index = 150
+    total_time = config.OLD_BURN_END_TESTNET3 - config.BURN_START
+    partial_time = config.OLD_BURN_END_TESTNET3 - block_index
+    expected_multiplier = 1000 + 500 * Fraction(partial_time, total_time)
+
+    assert burn.calculate_earned_quantity(burn_amount, block_index) == round(
+        burn_amount * expected_multiplier
     )
 
 
