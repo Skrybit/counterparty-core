@@ -902,6 +902,22 @@ CHECKPOINTS_TESTNET4 = {
         "ledger_hash": "16c1a4f419279d1ea09e593afcd0e978e31800996979ff75771e46690443a2a3",
         "txlist_hash": "2571d12f5be6ce7775224d60a3c245c93d6caf6956be0f9496ff89a8b3ff1f7b",
     },
+    109600: {
+        "ledger_hash": "341e5cb3aacf04a4b8977e6392cb932a7954c1cb8bed650f117865847ac83e06",
+        "txlist_hash": "ee4e669100c63044d3cce6cba2c2d15329e5f9e987c2adff373de8475679a5b2",
+    },
+    109800: {
+        "ledger_hash": "b7c841dc78a1b7e10e2ee251ad3831f19fd854bff29cacf74c56591572d3562f",
+        "txlist_hash": "dea9e3f49daf7d48307ccf22f16529dec9a7838781f6fd21f169bd6a9fe4a522",
+    },
+    110000: {
+        "ledger_hash": "3e4f714be9b26028bab0b052eadff5975bf12dd1d1c54e04af3306f79bdbd10e",
+        "txlist_hash": "fed58a212202ee9ee5633968d73572ca799aa1db40adf3be8e43d5c5584cb6f2",
+    },
+    110176: {
+        "ledger_hash": "97d88875781180e9f55f01aae417cdfbe1d16963132181b9e0ef311b0fa96a3f",
+        "txlist_hash": "94991c58f798d66b3c94f7220bd96d6280bda04759364c2d7a5ab78fd519670e",
+    },
 }
 
 CONSENSUS_HASH_VERSION_SIGNET = 1
@@ -913,5 +929,21 @@ CHECKPOINTS_SIGNET = {
     266993: {
         "ledger_hash": "9ea6fb6b6dbbd359a6e6e9a9448803584ee06d2c6ebe5e48d099ad713b40bc54",
         "txlist_hash": "a6f8973fc062b0f7facba7d0d899ee4d5891f1529d6a017df8da6eeb194c9bf0",
+    },
+    277880: {
+        "ledger_hash": "58f59931694f3eaa9ce4117403957617b876b6c163b89abda593f8a6276f2f14",
+        "txlist_hash": "dd5d1979fc72137857337ce1f7b29907f9edd472bc4b21ed67a3f5384268cdbc",
+    },
+    278080: {
+        "ledger_hash": "30afa7901ed0117640f5525a1680234d866625fe5ea4a9ebd5720277df17470e",
+        "txlist_hash": "d67b167fd00d5a0d7383fadf26827bae1432f4f86cf8ffa74823e17831b1212b",
+    },
+    278280: {
+        "ledger_hash": "49d8bb403abb0fd240ec61b385fd5396e6cedb0152075bb7556f66a3298d9720",
+        "txlist_hash": "09f4279be9165674dbecfee448e7577280bfd09c39eb3bb54f529ec01e438de9",
+    },
+    278480: {
+        "ledger_hash": "e70b2d4c2edf2a49cc36500afc3385fc621d905014363f1e2cfaaed596c080c5",
+        "txlist_hash": "45142c022b420d114ae9b6139f7a080045637941d19a45af77d35fdcd7292378",
     },
 }
