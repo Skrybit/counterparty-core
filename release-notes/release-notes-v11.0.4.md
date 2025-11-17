@@ -34,6 +34,7 @@ counterparty-server start
 - Fix `current_commit` in API root
 - Fix reorg edge case
 - Fallback to RPC when `getzmqnotifications` RPC call is not available
+- Fix RSFectcher restart
 
 ## Codebase
 

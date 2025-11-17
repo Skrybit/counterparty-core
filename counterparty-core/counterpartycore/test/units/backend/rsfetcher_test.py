@@ -440,9 +440,8 @@ def test_prefetch_blocks_with_stopped_error_exception(rsfetcher_instance):
             except Exception as e:
                 if str(e) == "Stopped error":
                     rsfetcher_instance.stopped_event.wait(timeout=5)
-                    rsfetcher_instance.restart()
-
-            rsfetcher_instance.running = False
+                    rsfetcher_instance.running = False
+                    rsfetcher_instance.restart(no_wait=True)
 
         # Replace with test version
         rsfetcher_instance.prefetch_blocks = controlled_prefetch
@@ -453,7 +452,7 @@ def test_prefetch_blocks_with_stopped_error_exception(rsfetcher_instance):
         # Verify behavior
         fetcher_mock.get_block_non_blocking.assert_called_once()
         rsfetcher_instance.stopped_event.wait.assert_called_once_with(timeout=5)
-        restart_mock.assert_called_once()
+        restart_mock.assert_called_once_with(no_wait=True)
 
 
 def test_get_block_none_and_nonincremented_height(rsfetcher_instance):
@@ -646,6 +645,21 @@ def test_stop_resets_instance_attributes(rsfetcher_instance):
     # Verify the methods were called
     fetcher_mock.stop.assert_called_once()
     executor_mock.shutdown.assert_called_once_with(wait=True)
+
+
+def test_stop_no_wait_skips_waiting(rsfetcher_instance):
+    """Test that stop with no_wait skips waiting for executor shutdown"""
+    fetcher_mock = MagicMock()
+    executor_mock = MagicMock()
+
+    rsfetcher_instance.fetcher = fetcher_mock
+    rsfetcher_instance.executor = executor_mock
+
+    rsfetcher_instance.stop(no_wait=True)
+
+    executor_mock.shutdown.assert_called_once_with(wait=False)
+    fetcher_mock.stop.assert_called_once()
+    assert rsfetcher_instance.executor is None
 
 
 def test_stop_with_stopped_error_exception(rsfetcher_instance):
