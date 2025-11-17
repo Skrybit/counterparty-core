@@ -267,7 +267,7 @@ def get_transaction_sources(decoded_tx):
                 raise DecodeError("data in source")
         elif asm[0] == opcodes.OP_HASH160 and asm[-1] == opcodes.OP_EQUAL and len(asm) == 3:  # noqa: F405
             new_source, new_data = decode_scripthash(asm)
-            assert not new_data and new_source
+            assert not new_data and new_source, "Invalid source"
         elif (protocol.enabled("segwit_support") and asm[0] == b"") or (
             protocol.enabled("taproot_support") and asm[0] == b"\x01"
         ):
@@ -317,7 +317,7 @@ def get_transaction_source_from_p2sh(decoded_tx, p2sh_is_segwit):
         if new_source is not None:
             p2sh_encoding_source = new_source
 
-        assert not new_destination
+        assert not new_destination, "New destination is not None"
 
         data += new_data
 
@@ -427,10 +427,12 @@ def get_tx_info_new(db, decoded_tx, block_index, p2sh_is_segwit=False, composing
     if not data and destinations != [
         config.UNSPENDABLE,
     ]:
-        assert protocol.enabled(
-            "dispensers", block_index
+        assert protocol.enabled("dispensers", block_index), (
+            "Dispenser protocol is not enabled"
         )  # else an exception would have been raised above
-        assert len(dispensers_outputs) > 0  # else an exception would have been raised above
+        assert len(dispensers_outputs) > 0, (
+            "No dispensers outputs"
+        )  # else an exception would have been raised above
         return get_dispensers_tx_info(sources, dispensers_outputs)
 
     destinations = "-".join(destinations)

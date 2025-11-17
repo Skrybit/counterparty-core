@@ -333,7 +333,7 @@ def parse_block(
     ledger.currentstate.ConsensusHashBuilder().reset()
 
     if block_index != config.MEMPOOL_BLOCK_INDEX:
-        assert block_index == CurrentState().current_block_index()
+        assert block_index == CurrentState().current_block_index(), "Block index mismatch"
 
     # Expire orders, bets and rps.
     order.expire(db, block_index)
@@ -425,7 +425,7 @@ def parse_block(
 
 
 def list_tx(db, block_hash, block_index, block_time, tx_hash, tx_index, decoded_tx):
-    assert isinstance(tx_hash, str)
+    assert isinstance(tx_hash, str), "tx_hash is not a string"
     CurrentState().set_current_tx_hash(tx_hash)
     cursor = db.cursor()
 
@@ -442,7 +442,7 @@ def list_tx(db, block_hash, block_index, block_time, tx_hash, tx_index, decoded_
             CurrentState().set_current_tx_hash(None)
             return tx_index
     else:
-        assert block_index == CurrentState().current_block_index()
+        assert block_index == CurrentState().current_block_index(), "Unexpected block index"
 
     if (
         (  # pylint: disable=too-many-boolean-expressions
@@ -679,7 +679,6 @@ def get_next_tx_index(db):
         )
     )
     if txes:
-        assert len(txes) == 1
         tx_index = txes[0]["tx_index"] + 1
     else:
         tx_index = 0
@@ -758,9 +757,11 @@ def parse_new_block(db, decoded_block, tx_index=None):
 
     # Sanity checks
     if decoded_block["block_index"] != config.BLOCK_FIRST:
-        assert previous_block["ledger_hash"] is not None
-        assert previous_block["txlist_hash"] is not None
-    assert previous_block["block_index"] == decoded_block["block_index"] - 1
+        assert previous_block["ledger_hash"] is not None, "Previous block ledger hash is None"
+        assert previous_block["txlist_hash"] is not None, "Previous block txlist hash is None"
+    assert previous_block["block_index"] == decoded_block["block_index"] - 1, (
+        "Previous block index mismatch"
+    )
 
     with db:  # ensure all the block or nothing
         logger.info("Block %s", decoded_block["block_index"], extra={"bold": True})
@@ -947,17 +948,17 @@ def catch_up(db):
             logger.debug("Block %s fetched. (%.6fs)", block_height, fetch_duration)
 
             # Check for gaps in the blockchain
-            assert block_height <= CurrentState().current_block_index() + 1
+            assert block_height <= CurrentState().current_block_index() + 1, (
+                "Block height is greater than current block index + 1"
+            )
 
             # Parse the current block
             tx_index, parsed_block_index = parse_new_block(db, decoded_block, tx_index=tx_index)
             # check if the parsed block is the expected one
             # if not that means a reorg happened
-            if parsed_block_index < block_height:
+            if parsed_block_index != block_height:
                 fetcher.stop()
                 fetcher = start_rsfetcher()
-            else:
-                assert parsed_block_index == block_height
 
             parsed_blocks += 1
             formatted_duration = helpers.format_duration(time.time() - start_time)

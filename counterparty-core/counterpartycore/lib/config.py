@@ -7,7 +7,7 @@ UNIT = 100000000  # The same across assets.
 
 
 # Semantic Version
-__version__ = "11.0.3"  # for hatch
+__version__ = "11.0.4-alpha.1"  # for hatch
 VERSION_STRING = __version__
 version = VERSION_STRING.split("-", maxsplit=1)[0].split(".")
 VERSION_MAJOR = int(version[0])
@@ -48,6 +48,7 @@ UPGRADE_ACTIONS = {
         "11.0.1": [("rollback", 4410000)],
         "11.0.2": [("refresh_state_db", 0)],
         "11.0.3": [("reparse", 2820893)],
+        "11.0.4-alpha.1": [("reparse", 4017708)],
     },
     "testnet4": {
         "10.10.0": [("rollback", 64492)],
@@ -162,7 +163,8 @@ MAGIC_BYTES_SIGNET = b"\x0a\x03\xcf\x40"  # For bip-0010
 BLOCK_FIRST_TESTNET3 = 310000
 BLOCK_FIRST_TESTNET3_HASH = "000000001f605ec6ee8d2c0d21bf3d3ded0a31ca837acc98893876213828989d"
 BURN_START_TESTNET3 = 310000
-BURN_END_TESTNET3 = 4017708  # in a very long time...
+BURN_END_TESTNET3 = 99999999  # in a very long time...
+OLD_BURN_END_TESTNET3 = 4017708  # in a very long time...
 
 BLOCK_FIRST_TESTNET4 = 63240
 BLOCK_FIRST_TESTNET4_HASH = "00000000ffa7082b07d16d8ee02d275ad80a4450350e53835f0f264d72b36cd7"

@@ -32,9 +32,12 @@ counterparty-server start
 ## Bugfixes
 
 - Fix `current_commit` in API root
+- Fix reorg edge case
+- Fallback to RPC when `getzmqnotifications` RPC call is not available
 
 ## Codebase
 
+- Increase BURN_END_TESTNET3 to 99999999
 
 ## API
 

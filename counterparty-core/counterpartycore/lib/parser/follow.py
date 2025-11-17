@@ -33,7 +33,10 @@ RAW_MEMPOOL = []
 
 
 def get_zmq_notifications_addresses():
-    zmq_notification = backend.bitcoind.get_zmq_notifications()
+    try:
+        zmq_notification = backend.bitcoind.get_zmq_notifications()
+    except exceptions.BitcoindRPCError as e:
+        raise exceptions.BitcoindZMQError("Error getting ZMQ notifications") from e
 
     if len(zmq_notification) == 0:
         raise exceptions.BitcoindZMQError("Bitcoin Core ZeroMQ notifications are not enabled.")
