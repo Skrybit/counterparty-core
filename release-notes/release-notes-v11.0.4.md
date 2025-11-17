@@ -32,6 +32,7 @@ counterparty-server start
 ## Bugfixes
 
 - Fix `current_commit` in API root
+- Fix reorg edge case
 
 ## Codebase
 

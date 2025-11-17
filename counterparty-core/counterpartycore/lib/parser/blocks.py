@@ -956,11 +956,9 @@ def catch_up(db):
             tx_index, parsed_block_index = parse_new_block(db, decoded_block, tx_index=tx_index)
             # check if the parsed block is the expected one
             # if not that means a reorg happened
-            if parsed_block_index < block_height:
+            if parsed_block_index != block_height:
                 fetcher.stop()
                 fetcher = start_rsfetcher()
-            else:
-                assert parsed_block_index == block_height, "Parsed block index mismatch"
 
             parsed_blocks += 1
             formatted_duration = helpers.format_duration(time.time() - start_time)
