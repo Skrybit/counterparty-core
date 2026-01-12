@@ -6,7 +6,6 @@ from typing import Literal
 
 from sentry_sdk import start_span as start_sentry_span
 
-from counterpartycore.lib.api import caches
 from counterpartycore.lib.utils.helpers import divide
 
 OrderStatus = Literal["all", "open", "expired", "filled", "cancelled"]
@@ -866,6 +865,7 @@ def get_events_by_name(
 
 def get_events_by_addresses(
     ledger_db,
+    state_db,
     addresses: str,
     event_name: str = None,
     cursor: int = None,
@@ -884,7 +884,7 @@ def get_events_by_addresses(
     if event_name:
         where[0]["event__in"] = event_name.split(",")
     events = select_rows(
-        caches.AddressEventsCache().cache_db,
+        state_db,
         "address_events",
         where=where,
         cursor_field="event_index",
