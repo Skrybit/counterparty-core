@@ -335,6 +335,22 @@ CONFIG_ARGS = [
         },
     ],
     [
+        ("--db-cache-size",),
+        {
+            "type": int,
+            "default": config.DEFAULT_DB_CACHE_SIZE,
+            "help": "SQLite page cache size (negative value = KB, e.g. -262144 = 256MB)",
+        },
+    ],
+    [
+        ("--db-mmap-size",),
+        {
+            "type": int,
+            "default": config.DEFAULT_DB_MMAP_SIZE,
+            "help": "SQLite memory-mapped I/O size in bytes (0 = disabled, 1073741824 = 1GB)",
+        },
+    ],
+    [
         ("--json-logs",),
         {
             "action": "store_true",

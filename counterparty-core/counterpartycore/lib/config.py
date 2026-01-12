@@ -292,6 +292,12 @@ LOG_IN_CONSOLE = False
 
 DEFAULT_DB_CONNECTION_POOL_SIZE = 10
 
+# SQLite performance tuning defaults
+# cache_size: negative value = KB, so -262144 = 256MB (default SQLite is ~2MB)
+DEFAULT_DB_CACHE_SIZE = -262144  # 256MB
+# mmap_size: bytes to memory-map (0 = disabled, 1GB enables OS page cache utilization)
+DEFAULT_DB_MMAP_SIZE = 1073741824  # 1GB
+
 DEFAULT_UTXO_VALUE = 546
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))

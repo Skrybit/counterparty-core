@@ -10,7 +10,11 @@ import pytest
 from counterpartycore.lib import config
 
 # Import required modules
-from counterpartycore.lib.utils.database import APSWConnectionPool, update_version
+from counterpartycore.lib.utils.database import (
+    APSWConnectionPool,
+    get_db_connection,
+    update_version,
+)
 
 
 def test_version(ledger_db, test_helpers):
@@ -565,3 +569,39 @@ def test_edge_case_config_pool_size_zero(monkeypatch):
             os.unlink(db_file)
         except FileNotFoundError:
             pass  # File might have been deleted already
+
+
+def test_cache_size_and_mmap_size_config(monkeypatch):
+    """Tests that DB_CACHE_SIZE and DB_MMAP_SIZE config values are applied."""
+    # Set custom cache and mmap sizes
+    test_cache_size = -131072  # 128MB
+    test_mmap_size = 536870912  # 512MB
+
+    monkeypatch.setattr(config, "DB_CACHE_SIZE", test_cache_size)
+    monkeypatch.setattr(config, "DB_MMAP_SIZE", test_mmap_size)
+
+    # Create a temporary database file
+    fd, db_file = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+
+    try:
+        # Get a connection which should apply the PRAGMAs
+        conn = get_db_connection(db_file, read_only=False, check_wal=False)
+
+        # Query the PRAGMA values to verify they were set
+        cursor = conn.cursor()
+
+        cursor.execute("PRAGMA cache_size")
+        result = cursor.fetchone()
+        assert result["cache_size"] == test_cache_size
+
+        cursor.execute("PRAGMA mmap_size")
+        result = cursor.fetchone()
+        assert result["mmap_size"] == test_mmap_size
+
+        conn.close()
+    finally:
+        try:
+            os.unlink(db_file)
+        except FileNotFoundError:
+            pass

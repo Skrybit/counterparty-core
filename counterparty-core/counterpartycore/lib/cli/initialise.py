@@ -129,6 +129,8 @@ def initialise_config(
     enable_zmq_publisher=False,
     zmq_publisher_port=None,
     db_connection_pool_size=config.DEFAULT_DB_CONNECTION_POOL_SIZE,
+    db_cache_size=config.DEFAULT_DB_CACHE_SIZE,
+    db_mmap_size=config.DEFAULT_DB_MMAP_SIZE,
     wsgi_server=None,
     waitress_threads=None,
     gunicorn_workers=None,
@@ -523,6 +525,8 @@ def initialise_config(
     config.NO_TELEMETRY = no_telemetry
 
     config.DB_CONNECTION_POOL_SIZE = db_connection_pool_size
+    config.DB_CACHE_SIZE = db_cache_size
+    config.DB_MMAP_SIZE = db_mmap_size
     config.WSGI_SERVER = wsgi_server
     config.WAITRESS_THREADS = waitress_threads
     config.GUNICORN_THREADS_PER_WORKER = gunicorn_threads_per_worker
