@@ -102,6 +102,39 @@ def build_state_db():
     logger.info("State DB built in %.2f seconds", time.time() - start_time)
 
 
+def record_balances_copied_block(state_db):
+    """
+    Record the current ledger_db block index to prevent double-counting of
+    CREDIT/DEBIT events during catch-up.
+
+    When state_db is rolled back, migration 0006 copies balances from ledger_db.
+    However, ledger_db may already be ahead (reparsing after its own rollback).
+    This creates a race condition where balances reflect block X, but parsed_events
+    only go up to block Y < X. When catch_up processes events from Y to X,
+    CREDIT/DEBIT events get applied twice.
+
+    By recording the ledger_db block index at the time of the copy, we can skip
+    CREDIT/DEBIT events that are already reflected in the copied balances.
+    """
+    cursor = state_db.cursor()
+
+    # Get the current block index from ledger_db
+    cursor.execute("ATTACH DATABASE ? AS ledger_db", (config.DATABASE,))
+    result = cursor.execute("""
+        SELECT MAX(block_index) as block_index 
+        FROM ledger_db.messages 
+        WHERE event = 'BLOCK_PARSED'
+    """).fetchone()
+    cursor.execute("DETACH DATABASE ledger_db")
+
+    if result and result["block_index"]:
+        database.set_config_value(state_db, "BALANCES_COPIED_AT_BLOCK", str(result["block_index"]))
+        logger.debug(
+            "Recorded balances copied at block %s to prevent double-counting",
+            result["block_index"],
+        )
+
+
 def rollback_state_db(state_db, block_index):
     logger.info("Rolling back State DB to block index %s...", block_index)
     start_time = time.time()
@@ -111,6 +144,9 @@ def rollback_state_db(state_db, block_index):
             rollback_tables(state_db, block_index)
         with log.Spinner("Re-applying migrations..."):
             reapply_migrations(state_db, MIGRATIONS_AFTER_ROLLBACK)
+        # Record the ledger_db block index to prevent double-counting of balances
+        # during catch-up (see record_balances_copied_block docstring for details)
+        record_balances_copied_block(state_db)
 
     logger.info("State DB rolled back in %.2f seconds", time.time() - start_time)
 
@@ -122,5 +158,8 @@ def refresh_state_db(state_db):
     with state_db:
         with log.Spinner("Re-applying migrations..."):
             reapply_migrations(state_db, MIGRATIONS_AFTER_ROLLBACK)
+        # Record the ledger_db block index to prevent double-counting of balances
+        # during catch-up (see record_balances_copied_block docstring for details)
+        record_balances_copied_block(state_db)
 
     logger.info("State DB refreshed in %.2f seconds", time.time() - start_time)
