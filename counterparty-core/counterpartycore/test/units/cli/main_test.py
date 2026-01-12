@@ -68,6 +68,8 @@ def test_argparser():
         "enable_zmq_publisher": False,
         "zmq_publisher_port": None,
         "db_connection_pool_size": 20,
+        "db_cache_size": -262144,
+        "db_mmap_size": 1073741824,
         "json_logs": False,
         "wsgi_server": "waitress",
         "waitress_threads": 10,
