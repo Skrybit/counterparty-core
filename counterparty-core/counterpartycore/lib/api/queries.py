@@ -331,7 +331,12 @@ def select_rows(
         result_count = cursor.fetchone()["count"]
 
     if result and len(result) > limit:
-        next_cursor = result[-1][cursor_field]
+        # Don't return a cursor when using sort or offset
+        # (cursor is ignored in those cases, so returning one would cause infinite loops)
+        if sort is not None or offset is not None:
+            next_cursor = None
+        else:
+            next_cursor = result[-1][cursor_field]
         result = result[:-1]
     else:
         next_cursor = None
