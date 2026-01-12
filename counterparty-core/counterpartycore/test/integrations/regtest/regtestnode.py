@@ -2,6 +2,7 @@
 
 import binascii
 import json
+import math
 import os
 import signal
 import struct
@@ -1156,7 +1157,7 @@ class RegtestNode:
             unsigned_tx["signed_tx_estimated_size"]["vsize"],
             unsigned_tx["signed_tx_estimated_size"]["adjusted_vsize"],
         )
-        assert unsigned_tx["btc_fee"] == int(size * 2.31)
+        assert unsigned_tx["btc_fee"] == math.ceil(size * 2.31)
 
         legacy_address = self.bitcoin_wallet("getnewaddress", WALLET_NAME, "legacy").strip()
         self.send_transaction(
