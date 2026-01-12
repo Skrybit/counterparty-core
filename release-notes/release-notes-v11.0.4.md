@@ -1,10 +1,12 @@
 # Release Notes - Counterparty Core v11.0.4 (2025-??-??)
 
+This release fixes a bug in the UTXO balances cache rebuilding where destinations from `KNOWN_SOURCES` transactions were not properly restored after a node restart, causing some `utxomove` transactions to go undetected. A rollback to block 926,807 will occur automatically on mainnet.
+
 # Upgrading
 
 **Upgrade Instructions:**
 
-To upgrade, download the latest version of `counterparty-core` and restart `counterparty-server`. An reparse to block 911,955 to correct the transaction cache will occur automatically.
+To upgrade, download the latest version of `counterparty-core` and restart `counterparty-server`. A rollback to block 926,807 will occur automatically on mainnet.
 
 With Docker Compose:
 
@@ -34,6 +36,8 @@ counterparty-server start
 - Fix `current_commit` in API root
 - Fix reorg edge case
 - Fallback to RPC when `getzmqnotifications` RPC call is not available
+- Fix state.db reorg
+- Fix UTXO cache building
 
 ## Codebase
 
