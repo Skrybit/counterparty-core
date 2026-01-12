@@ -118,14 +118,25 @@ def record_balances_copied_block(state_db):
     """
     cursor = state_db.cursor()
 
-    # Get the current block index from ledger_db
-    cursor.execute("ATTACH DATABASE ? AS ledger_db", (config.DATABASE,))
+    # Check if ledger_db is already attached (migration 0006 may have attached it)
+    already_attached = (
+        cursor.execute(
+            "SELECT COUNT(*) AS count FROM pragma_database_list WHERE name = ?", ("ledger_db",)
+        ).fetchone()["count"]
+        > 0
+    )
+
+    if not already_attached:
+        cursor.execute("ATTACH DATABASE ? AS ledger_db", (config.DATABASE,))
+
     result = cursor.execute("""
         SELECT MAX(block_index) as block_index 
         FROM ledger_db.messages 
         WHERE event = 'BLOCK_PARSED'
     """).fetchone()
-    cursor.execute("DETACH DATABASE ledger_db")
+
+    if not already_attached:
+        cursor.execute("DETACH DATABASE ledger_db")
 
     if result and result["block_index"]:
         database.set_config_value(state_db, "BALANCES_COPIED_AT_BLOCK", str(result["block_index"]))
