@@ -42,6 +42,7 @@ counterparty-server start
 ## Codebase
 
 - Increase BURN_END_TESTNET3 to 99999999
+- Update Werkzeug to 3.1.4
 
 ## API
 
