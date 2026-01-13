@@ -32,8 +32,12 @@ RUN pip3 install maturin
 RUN mkdir -p /counterparty-core
 
 # === Rust dependency caching ===
-# Copy only Cargo files first to fetch dependencies (cacheable layer)
+# Copy only Cargo files and create dummy source to fetch dependencies (cacheable layer)
 COPY ./counterparty-rs/Cargo.toml ./counterparty-rs/Cargo.lock /counterparty-core/counterparty-rs/
+COPY ./counterparty-rs/build.rs /counterparty-core/counterparty-rs/
+RUN mkdir -p /counterparty-core/counterparty-rs/src && \
+    echo 'fn main() {}' > /counterparty-core/counterparty-rs/src/lib.rs
+
 WORKDIR /counterparty-core/counterparty-rs
 
 # Fetch dependencies - this layer is cached until Cargo.toml/Cargo.lock change
