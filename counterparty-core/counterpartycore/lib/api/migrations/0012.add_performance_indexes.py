@@ -25,24 +25,15 @@ def apply(db):
 
     # Index on balances.address for address-based balance queries
     # This is one of the most common query patterns in the API
-    db.execute(
-        "CREATE INDEX IF NOT EXISTS balances_address_idx "
-        "ON balances (address)"
-    )
+    db.execute("CREATE INDEX IF NOT EXISTS balances_address_idx ON balances (address)")
 
     # Index on balances.utxo_address for UTXO-based balance queries
-    db.execute(
-        "CREATE INDEX IF NOT EXISTS balances_utxo_address_idx "
-        "ON balances (utxo_address)"
-    )
+    db.execute("CREATE INDEX IF NOT EXISTS balances_utxo_address_idx ON balances (utxo_address)")
 
     # Index on dispensers.source for address-based dispenser queries
     # The existing composite index (source, asset, tx_hash) doesn't help
     # when querying by source alone
-    db.execute(
-        "CREATE INDEX IF NOT EXISTS dispensers_source_idx "
-        "ON dispensers (source)"
-    )
+    db.execute("CREATE INDEX IF NOT EXISTS dispensers_source_idx ON dispensers (source)")
 
     logger.debug(
         "Performance indexes created in %.2f seconds",
