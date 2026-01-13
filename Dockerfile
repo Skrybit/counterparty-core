@@ -31,17 +31,30 @@ RUN pip3 install maturin
 # Create root directory for the project
 RUN mkdir -p /counterparty-core
 
-# Copy files required to build counterparty-rs
+# === Rust dependency caching ===
+# Copy only Cargo files first to fetch dependencies (cacheable layer)
+COPY ./counterparty-rs/Cargo.toml ./counterparty-rs/Cargo.lock /counterparty-core/counterparty-rs/
+WORKDIR /counterparty-core/counterparty-rs
+
+# Fetch dependencies - this layer is cached until Cargo.toml/Cargo.lock change
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    cargo fetch
+
+# Copy files required for build
 COPY README.md /counterparty-core/README.md
 COPY counterparty-core/counterpartycore/lib/config.py /counterparty-core/counterparty-core/counterpartycore/lib/config.py
 
-# Build Rust components
+# Copy Rust source files
 COPY ./counterparty-rs /counterparty-core/counterparty-rs
-WORKDIR /counterparty-core/counterparty-rs
+
+# Build with maturin, using persistent cache for target dir
+ENV CARGO_TARGET_DIR=/cargo-target
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
-    --mount=type=cache,target=/counterparty-core/counterparty-rs/target \
-    pip3 install .
+    --mount=type=cache,target=/cargo-target \
+    maturin build --release -o /wheels && \
+    pip3 install /wheels/*.whl
 
 # Build Python components
 COPY ./counterparty-core /counterparty-core/counterparty-core
