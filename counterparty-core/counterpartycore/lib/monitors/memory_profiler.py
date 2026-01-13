@@ -99,6 +99,21 @@ def estimate_list_memory(lst):
     return size
 
 
+def estimate_set_memory(s):
+    """Estimate memory usage of a set (shallow)."""
+    if not s:
+        return 0
+    size = sys.getsizeof(s)
+    # Sample first 100 items to estimate average
+    sample_size = min(100, len(s))
+    if sample_size > 0:
+        items_iter = iter(s)
+        sampled_items = [next(items_iter) for _ in range(sample_size)]
+        avg_item_size = sum(sys.getsizeof(item) for item in sampled_items) / sample_size
+        size += int(avg_item_size * len(s))
+    return size
+
+
 def get_cache_sizes():
     """Get sizes of known caches."""
     sizes = {}
@@ -153,9 +168,9 @@ def get_cache_sizes():
 
         if NotSupportedTransactionsCache in helpers.SingletonMeta._instances:
             cache = helpers.SingletonMeta._instances[NotSupportedTransactionsCache]
-            not_supported = getattr(cache, "not_suppported_txs", [])
+            not_supported = getattr(cache, "not_suppported_txs", set())
             sizes["NotSupportedTxCache"] = len(not_supported)
-            sizes["NotSupportedTxCache_MB"] = estimate_list_memory(not_supported) / (1024 * 1024)
+            sizes["NotSupportedTxCache_MB"] = estimate_set_memory(not_supported) / (1024 * 1024)
     except ImportError:
         pass
 

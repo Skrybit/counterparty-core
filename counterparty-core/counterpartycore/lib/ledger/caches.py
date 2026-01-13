@@ -1,6 +1,8 @@
 import logging
 import time
 
+from cachetools import LRUCache
+
 from counterpartycore.lib import config
 from counterpartycore.lib.ledger.currentstate import CurrentState
 from counterpartycore.lib.utils import database, helpers
@@ -10,12 +12,18 @@ logger = logging.getLogger(config.LOGGER_NAME)
 
 class AssetCache(metaclass=helpers.SingletonMeta):
     def __init__(self, db) -> None:
-        self.assets = {}
+        # Store db reference for lazy loading on cache miss
+        self.db = db
+        # Use LRU cache with bounded size for asset info (0 = unlimited)
+        max_size = getattr(config, "ASSET_CACHE_MAX_SIZE", config.DEFAULT_ASSET_CACHE_MAX_SIZE)
+        self.max_size = max_size if max_size > 0 else float("inf")
+        self.assets = LRUCache(maxsize=self.max_size)
+        # Keep full dicts for supply calculations (these are just numbers, much smaller)
         self.assets_total_issued = {}
         self.assets_total_destroyed = {}
         start = time.time()
         logger.debug("Initialising asset cache...")
-        # asset info
+        # asset info - load into bounded LRU cache
         sql = """
             SELECT *, MAX(rowid) AS rowid FROM issuances
             WHERE status = 'valid'
@@ -23,14 +31,13 @@ class AssetCache(metaclass=helpers.SingletonMeta):
         """
         cursor = db.cursor()
         all_assets = cursor.execute(sql)
-        self.assets = {}
         for asset in all_assets:
             del asset["rowid"]
             if asset["asset_longname"] is not None:
                 self.assets[asset["asset_longname"]] = asset
             self.assets[asset["asset"]] = asset
         duration = time.time() - start
-        # asset total issued
+        # asset total issued - load fully (needed for supply calculations)
         sql = """
             SELECT SUM(quantity) AS total, asset
             FROM issuances
@@ -42,7 +49,7 @@ class AssetCache(metaclass=helpers.SingletonMeta):
         self.assets_total_issued = {}
         for count in all_counts:
             self.assets_total_issued[count["asset"]] = count["total"]
-        # asset total destroyed
+        # asset total destroyed - load fully (needed for supply calculations)
         sql = """
             SELECT SUM(quantity) AS total, asset
             FROM destructions
@@ -55,7 +62,36 @@ class AssetCache(metaclass=helpers.SingletonMeta):
         for count in all_counts:
             self.assets_total_destroyed[count["asset"]] = count["total"]
 
-        logger.debug("Asset cache initialised in %.2f seconds", duration)
+        logger.debug(
+            "Asset cache initialised in %.2f seconds (max_size=%s, loaded=%d)",
+            duration,
+            self.max_size,
+            len(self.assets),
+        )
+
+    def get_asset(self, asset_name):
+        """Get asset info from cache, falling back to DB on cache miss."""
+        # Check cache first
+        if asset_name in self.assets:
+            return self.assets[asset_name]
+
+        # Cache miss - query database
+        cursor = self.db.cursor()
+        name_field = "asset_longname" if "." in asset_name else "asset"
+        sql = f"""
+            SELECT * FROM issuances
+            WHERE ({name_field} = ? AND status = 'valid')
+            ORDER BY tx_index DESC
+            LIMIT 1
+        """  # nosec B608  # noqa: S608
+        cursor.execute(sql, (asset_name,))
+        result = cursor.fetchone()
+
+        if result:
+            # Cache the result for future lookups
+            self.assets[asset_name] = result
+
+        return result
 
     def add_issuance(self, issuance):
         if "rowid" in issuance:
@@ -82,12 +118,19 @@ class AssetCache(metaclass=helpers.SingletonMeta):
 
 class UTXOBalancesCache(metaclass=helpers.SingletonMeta):
     def __init__(self, db):
+        # Store db reference for lazy loading on cache miss
+        self.db = db
         logger.debug("Initialising utxo balances cache...")
+        # Use LRU cache with bounded size (0 = unlimited)
+        max_size = getattr(config, "UTXO_CACHE_MAX_SIZE", config.DEFAULT_UTXO_CACHE_MAX_SIZE)
+        self.max_size = max_size if max_size > 0 else float("inf")
+        # Value is True if has balance, False if explicitly known to have no balance
+        self.utxos_with_balance = LRUCache(maxsize=self.max_size)
+
         sql = "SELECT utxo, asset, quantity, MAX(rowid) FROM balances WHERE utxo IS NOT NULL GROUP BY utxo, asset"
         cursor = db.cursor()
         cursor.execute(sql)
         utxo_balances = cursor.fetchall()
-        self.utxos_with_balance = {}
         for utxo_balance in utxo_balances:
             self.utxos_with_balance[utxo_balance["utxo"]] = True
         # to not breack `txlist_hash`es we rebuild the cache in the same way it is built during transaction parsing:
@@ -100,14 +143,35 @@ class UTXOBalancesCache(metaclass=helpers.SingletonMeta):
             if utxos_info[1] != "":
                 self.utxos_with_balance[utxos_info[1]] = True
 
+        logger.debug(
+            "UTXO balances cache initialised (max_size=%s, loaded=%d)",
+            self.max_size,
+            len(self.utxos_with_balance),
+        )
+
     def has_balance(self, utxo):
-        return utxo in self.utxos_with_balance
+        # Check cache first
+        if utxo in self.utxos_with_balance:
+            return self.utxos_with_balance[utxo]
+
+        # Cache miss - query database
+        cursor = self.db.cursor()
+        cursor.execute(
+            "SELECT 1 FROM balances WHERE utxo = ? AND quantity > 0 LIMIT 1",
+            (utxo,),
+        )
+        result = cursor.fetchone() is not None
+
+        # Cache the result (both positive and negative)
+        self.utxos_with_balance[utxo] = result
+        return result
 
     def add_balance(self, utxo):
         self.utxos_with_balance[utxo] = True
 
     def remove_balance(self, utxo):
-        self.utxos_with_balance.pop(utxo, None)
+        # Mark as no balance rather than removing (so cache miss doesn't re-query)
+        self.utxos_with_balance[utxo] = False
 
 
 class OrdersCache(metaclass=helpers.SingletonMeta):

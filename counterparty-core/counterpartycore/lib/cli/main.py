@@ -330,8 +330,8 @@ CONFIG_ARGS = [
         ("--db-connection-pool-size",),
         {
             "type": int,
-            "default": 20,
-            "help": "size of the database connection pool",
+            "default": config.DEFAULT_DB_CONNECTION_POOL_SIZE,
+            "help": "size of the database connection pool per thread",
         },
     ],
     [
@@ -356,6 +356,30 @@ CONFIG_ARGS = [
             "type": int,
             "default": config.DEFAULT_DB_MAX_CONNECTIONS,
             "help": "Maximum total database connections across all threads (0 = unlimited)",
+        },
+    ],
+    [
+        ("--asset-cache-max-size",),
+        {
+            "type": int,
+            "default": config.DEFAULT_ASSET_CACHE_MAX_SIZE,
+            "help": "Maximum entries in the asset info LRU cache (0 = unlimited)",
+        },
+    ],
+    [
+        ("--utxo-cache-max-size",),
+        {
+            "type": int,
+            "default": config.DEFAULT_UTXO_CACHE_MAX_SIZE,
+            "help": "Maximum entries in the UTXO balances LRU cache (0 = unlimited)",
+        },
+    ],
+    [
+        ("--not-supported-tx-cache-max-size",),
+        {
+            "type": int,
+            "default": config.DEFAULT_NOT_SUPPORTED_TX_CACHE_MAX_SIZE,
+            "help": "Maximum entries in the not-supported transactions cache",
         },
     ],
     [

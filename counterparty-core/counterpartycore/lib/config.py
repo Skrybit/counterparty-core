@@ -301,6 +301,11 @@ DEFAULT_DB_CACHE_SIZE = -262144  # 256MB
 # With 50 max connections, 64MB × 50 = 3.2GB max theoretical mmap overhead
 DEFAULT_DB_MMAP_SIZE = 67108864  # 64MB
 
+# Cache size limits to prevent unbounded memory growth
+DEFAULT_ASSET_CACHE_MAX_SIZE = 50_000
+DEFAULT_UTXO_CACHE_MAX_SIZE = 100_000
+DEFAULT_NOT_SUPPORTED_TX_CACHE_MAX_SIZE = 200_000
+
 DEFAULT_UTXO_VALUE = 546
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
