@@ -347,7 +347,15 @@ CONFIG_ARGS = [
         {
             "type": int,
             "default": config.DEFAULT_DB_MMAP_SIZE,
-            "help": "SQLite memory-mapped I/O size in bytes (0 = disabled, 1073741824 = 1GB)",
+            "help": "SQLite memory-mapped I/O size in bytes per connection (0 = disabled)",
+        },
+    ],
+    [
+        ("--db-max-connections",),
+        {
+            "type": int,
+            "default": config.DEFAULT_DB_MAX_CONNECTIONS,
+            "help": "Maximum total database connections across all threads (0 = unlimited)",
         },
     ],
     [

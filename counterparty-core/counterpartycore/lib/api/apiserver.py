@@ -1,4 +1,5 @@
 import argparse
+import gc
 import logging
 import multiprocessing
 import os
@@ -434,6 +435,25 @@ def handle_options():
 
 def init_flask_app():
     app = Flask(config.APP_NAME)
+
+    # Periodic garbage collection to reduce memory fragmentation
+    # Track request count at module level to persist across requests
+    if not hasattr(init_flask_app, "request_count"):
+        init_flask_app.request_count = 0
+
+    @app.before_request
+    def periodic_gc():
+        init_flask_app.request_count += 1
+        # Trigger GC every 100,000 requests to reduce memory fragmentation
+        # without adding overhead on every request
+        if init_flask_app.request_count % 100_000 == 0:
+            collected = gc.collect()
+            logger.debug(
+                "Periodic GC triggered after %d requests: collected %d objects",
+                init_flask_app.request_count,
+                collected,
+            )
+
     with app.app_context():
         # Initialise the API access log
         init_api_access_log(app)

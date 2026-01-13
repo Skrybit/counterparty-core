@@ -129,6 +129,7 @@ def initialise_config(
     enable_zmq_publisher=False,
     zmq_publisher_port=None,
     db_connection_pool_size=config.DEFAULT_DB_CONNECTION_POOL_SIZE,
+    db_max_connections=config.DEFAULT_DB_MAX_CONNECTIONS,
     db_cache_size=config.DEFAULT_DB_CACHE_SIZE,
     db_mmap_size=config.DEFAULT_DB_MMAP_SIZE,
     wsgi_server=None,
@@ -526,6 +527,7 @@ def initialise_config(
     config.NO_TELEMETRY = no_telemetry
 
     config.DB_CONNECTION_POOL_SIZE = db_connection_pool_size
+    config.DB_MAX_CONNECTIONS = db_max_connections
     config.DB_CACHE_SIZE = db_cache_size
     config.DB_MMAP_SIZE = db_mmap_size
     config.WSGI_SERVER = wsgi_server

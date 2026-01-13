@@ -291,12 +291,15 @@ INFLUX_DB_BUCKET = "node-telemetry"
 LOG_IN_CONSOLE = False
 
 DEFAULT_DB_CONNECTION_POOL_SIZE = 10
+# Maximum total connections across all threads (0 = unlimited)
+DEFAULT_DB_MAX_CONNECTIONS = 50
 
 # SQLite performance tuning defaults
 # cache_size: negative value = KB, so -262144 = 256MB (default SQLite is ~2MB)
 DEFAULT_DB_CACHE_SIZE = -262144  # 256MB
-# mmap_size: bytes to memory-map (0 = disabled, 1GB enables OS page cache utilization)
-DEFAULT_DB_MMAP_SIZE = 1073741824  # 1GB
+# mmap_size: bytes to memory-map per connection (0 = disabled, relies on OS page cache)
+# With 50 max connections, 64MB × 50 = 3.2GB max theoretical mmap overhead
+DEFAULT_DB_MMAP_SIZE = 67108864  # 64MB
 
 DEFAULT_UTXO_VALUE = 546
 
