@@ -41,6 +41,10 @@ def get_process_memory():
                 stats["data_kb"] = int(line.split()[1])
             elif line.startswith("VmHWM:"):
                 stats["hwm_kb"] = int(line.split()[1])
+            elif line.startswith("RssAnon:"):
+                stats["rss_anon_kb"] = int(line.split()[1])
+            elif line.startswith("RssFile:"):
+                stats["rss_file_kb"] = int(line.split()[1])
         return stats
     except (FileNotFoundError, IOError):
         # Not on Linux, try resource module
@@ -63,6 +67,38 @@ def get_process_memory():
             return {}
 
 
+def estimate_dict_memory(d):
+    """Estimate memory usage of a dictionary (shallow)."""
+    if not d:
+        return 0
+    # Dict overhead + key/value pairs
+    # This is approximate - actual memory can vary
+    size = sys.getsizeof(d)
+    # Sample first 100 items to estimate average
+    sample_size = min(100, len(d))
+    if sample_size > 0:
+        items_iter = iter(d.items())
+        sampled_items = [next(items_iter) for _ in range(sample_size)]
+        avg_item_size = (
+            sum(sys.getsizeof(k) + sys.getsizeof(v) for k, v in sampled_items) / sample_size
+        )
+        size += int(avg_item_size * len(d))
+    return size
+
+
+def estimate_list_memory(lst):
+    """Estimate memory usage of a list (shallow)."""
+    if not lst:
+        return 0
+    size = sys.getsizeof(lst)
+    # Sample first 100 items to estimate average
+    sample_size = min(100, len(lst))
+    if sample_size > 0:
+        avg_item_size = sum(sys.getsizeof(item) for item in lst[:sample_size]) / sample_size
+        size += int(avg_item_size * len(lst))
+    return size
+
+
 def get_cache_sizes():
     """Get sizes of known caches."""
     sizes = {}
@@ -74,9 +110,18 @@ def get_cache_sizes():
         # AssetCache
         if AssetCache in helpers.SingletonMeta._instances:
             cache = helpers.SingletonMeta._instances[AssetCache]
-            sizes["AssetCache.assets"] = len(getattr(cache, "assets", {}))
-            sizes["AssetCache.total_issued"] = len(getattr(cache, "assets_total_issued", {}))
-            sizes["AssetCache.total_destroyed"] = len(getattr(cache, "assets_total_destroyed", {}))
+            assets = getattr(cache, "assets", {})
+            total_issued = getattr(cache, "assets_total_issued", {})
+            total_destroyed = getattr(cache, "assets_total_destroyed", {})
+
+            sizes["AssetCache.assets"] = len(assets)
+            sizes["AssetCache.assets_MB"] = estimate_dict_memory(assets) / (1024 * 1024)
+            sizes["AssetCache.total_issued"] = len(total_issued)
+            sizes["AssetCache.total_issued_MB"] = estimate_dict_memory(total_issued) / (1024 * 1024)
+            sizes["AssetCache.total_destroyed"] = len(total_destroyed)
+            sizes["AssetCache.total_destroyed_MB"] = estimate_dict_memory(total_destroyed) / (
+                1024 * 1024
+            )
 
         # OrdersCache
         if OrdersCache in helpers.SingletonMeta._instances:
@@ -86,14 +131,19 @@ def get_cache_sizes():
                     cursor = cache.cache_db.cursor()
                     cursor.execute("SELECT COUNT(*) FROM orders")
                     row = cursor.fetchone()
-                    sizes["OrdersCache.orders"] = row[0] if row else 0
+                    count = row[0] if row else 0
+                    sizes["OrdersCache.orders"] = count
+                    # Estimate: each order ~500 bytes in memory
+                    sizes["OrdersCache.orders_MB"] = (count * 500) / (1024 * 1024)
                 except Exception:
                     sizes["OrdersCache.orders"] = "error"
 
         # UTXOBalancesCache
         if UTXOBalancesCache in helpers.SingletonMeta._instances:
             cache = helpers.SingletonMeta._instances[UTXOBalancesCache]
-            sizes["UTXOBalancesCache.utxos"] = len(getattr(cache, "utxos_with_balance", {}))
+            utxos = getattr(cache, "utxos_with_balance", {})
+            sizes["UTXOBalancesCache.utxos"] = len(utxos)
+            sizes["UTXOBalancesCache.utxos_MB"] = estimate_dict_memory(utxos) / (1024 * 1024)
     except ImportError:
         pass
 
@@ -103,7 +153,9 @@ def get_cache_sizes():
 
         if NotSupportedTransactionsCache in helpers.SingletonMeta._instances:
             cache = helpers.SingletonMeta._instances[NotSupportedTransactionsCache]
-            sizes["NotSupportedTxCache"] = len(getattr(cache, "not_suppported_txs", []))
+            not_supported = getattr(cache, "not_suppported_txs", [])
+            sizes["NotSupportedTxCache"] = len(not_supported)
+            sizes["NotSupportedTxCache_MB"] = estimate_list_memory(not_supported) / (1024 * 1024)
     except ImportError:
         pass
 
@@ -184,12 +236,20 @@ def log_memory_profile():
     # Process memory
     proc_mem = get_process_memory()
     if proc_mem:
-        logger.info(
-            "Memory Profile - Process: RSS=%.1fMB, Data=%.1fMB, HWM=%.1fMB",
-            proc_mem.get("rss_kb", 0) / 1024,
-            proc_mem.get("data_kb", 0) / 1024,
-            proc_mem.get("hwm_kb", 0) / 1024,
-        )
+        # Log basic memory stats
+        msg_parts = [
+            f"RSS={proc_mem.get('rss_kb', 0) / 1024:.1f}MB",
+            f"Data={proc_mem.get('data_kb', 0) / 1024:.1f}MB",
+            f"HWM={proc_mem.get('hwm_kb', 0) / 1024:.1f}MB",
+        ]
+
+        # Add RssAnon and RssFile if available (Linux only)
+        if "rss_anon_kb" in proc_mem:
+            msg_parts.append(f"RssAnon={proc_mem['rss_anon_kb'] / 1024:.1f}MB")
+        if "rss_file_kb" in proc_mem:
+            msg_parts.append(f"RssFile={proc_mem['rss_file_kb'] / 1024:.1f}MB")
+
+        logger.info("Memory Profile - Process: %s", ", ".join(msg_parts))
 
     # Cache sizes
     cache_sizes = get_cache_sizes()
