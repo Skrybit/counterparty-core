@@ -39,11 +39,13 @@ counterparty-server start
 - Fix RSFectcher restart
 - Fix state.db reorg
 - Fix UTXO cache building
+- Fix `next_cursor` in API results when `sort` is provided
 
 ## Codebase
 
 - Increase BURN_END_TESTNET3 to 99999999
 - Update Werkzeug to 3.1.4
+- Update PyO3 to 0.24.1
 
 ## API
 
