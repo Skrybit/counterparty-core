@@ -516,6 +516,39 @@ def check_database_version(state_db):
     check.check_database_version(state_db, execute_upgrade_actions, "State")
 
 
+class ConnectionPoolMonitor(threading.Thread):
+    """Monitor connection pool statistics and log periodically."""
+
+    def __init__(self, stop_event, interval_seconds=60):
+        super().__init__(name="ConnectionPoolMonitor", daemon=True)
+        self.stop_event = stop_event
+        self.interval = interval_seconds
+
+    def run(self):
+        while not self.stop_event.is_set():
+            self.stop_event.wait(self.interval)
+            if self.stop_event.is_set():
+                break
+
+            try:
+                ledger_stats = LedgerDBConnectionPool().get_stats()
+                state_stats = StateDBConnectionPool().get_stats()
+
+                logger.info(
+                    "POOL_STATS ledger=%d/%d (%.0f%%, peak=%d) state=%d/%d (%.0f%%, peak=%d)",
+                    ledger_stats["current"],
+                    ledger_stats["max"],
+                    ledger_stats["utilization"],
+                    ledger_stats["peak"],
+                    state_stats["current"],
+                    state_stats["max"],
+                    state_stats["utilization"],
+                    state_stats["peak"],
+                )
+            except Exception as e:  # noqa: E722 # pylint: disable=broad-exception-caught
+                logger.error("Error logging pool stats: %s", e)
+
+
 def run_apiserver(
     args, server_ready_value, stop_event, shared_backend_height, parent_pid, log_stream
 ):
@@ -528,6 +561,7 @@ def run_apiserver(
     parent_checker = None
     watcher = None
     mem_profiler = None
+    pool_monitor = None
 
     try:
         # Set signal handlers for graceful shutdown
@@ -544,6 +578,11 @@ def run_apiserver(
                 interval_seconds=60,  # Log every minute for detailed tracking
                 enable_tracemalloc=True,
             )
+
+        # Start connection pool monitor
+        logger.info("Starting Connection Pool Monitor thread...")
+        pool_monitor = ConnectionPoolMonitor(stop_event, interval_seconds=60)
+        pool_monitor.start()
 
         if args["rebuild_state_db"]:
             dbbuilder.build_state_db()
