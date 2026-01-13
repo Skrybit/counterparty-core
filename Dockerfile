@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # Build stage
 FROM alpine:3.18 as builder
 
@@ -36,7 +38,10 @@ COPY counterparty-core/counterpartycore/lib/config.py /counterparty-core/counter
 # Build Rust components
 COPY ./counterparty-rs /counterparty-core/counterparty-rs
 WORKDIR /counterparty-core/counterparty-rs
-RUN pip3 install .
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/counterparty-core/counterparty-rs/target \
+    pip3 install .
 
 # Build Python components
 COPY ./counterparty-core /counterparty-core/counterparty-core

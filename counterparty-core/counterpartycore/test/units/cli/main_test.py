@@ -84,5 +84,6 @@ def test_argparser():
         "catch_up": "normal",
         "api_only": False,
         "profile": False,
+        "memory_profile": False,
         "enable_all_protocol_changes": False,
     }
