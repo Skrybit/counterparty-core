@@ -2,7 +2,7 @@
 Pytest configuration for integration tests.
 """
 
-from . import cache_manager
+import cache_manager
 
 
 def pytest_addoption(parser):

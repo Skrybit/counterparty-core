@@ -11,10 +11,9 @@ import sys
 import time
 
 import apsw
+import cache_manager
 import requests
 import sh
-
-from . import cache_manager
 
 # Working directory for the test (separate from cache)
 DATA_DIR = os.path.join(os.path.expanduser("~/.cache"), "counterparty-test-data")
