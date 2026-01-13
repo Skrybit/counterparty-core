@@ -1,10 +1,12 @@
 # Release Notes - Counterparty Core v11.0.4 (2025-??-??)
 
+This release fixes a bug in the UTXO balances cache rebuilding where destinations from `KNOWN_SOURCES` transactions were not properly restored after a node restart, causing some `utxomove` transactions to go undetected. A rollback to block 926,807 will occur automatically on mainnet.
+
 # Upgrading
 
 **Upgrade Instructions:**
 
-To upgrade, download the latest version of `counterparty-core` and restart `counterparty-server`. An reparse to block 911,955 to correct the transaction cache will occur automatically.
+To upgrade, download the latest version of `counterparty-core` and restart `counterparty-server`. A rollback to block 926,807 will occur automatically on mainnet.
 
 With Docker Compose:
 
@@ -34,6 +36,10 @@ counterparty-server start
 - Fix `current_commit` in API root
 - Fix reorg edge case
 - Fallback to RPC when `getzmqnotifications` RPC call is not available
+- Fix RSFectcher restart
+- Fix state.db reorg
+- Fix UTXO cache building
+- Fix `next_cursor` in API results when `sort` is provided
 
 ## Codebase
 
@@ -41,6 +47,8 @@ counterparty-server start
 - Add graceful SIGTERM handling for Kubernetes deployments
 - Improve Docker build caching for Rust components
 - Add block parsing timing instrumentation at debug level
+- Update Werkzeug to 3.1.4
+- Update PyO3 to 0.24.1
 
 ## Performance & Memory
 

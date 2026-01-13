@@ -566,6 +566,20 @@ def test_get_balances_by_addresses_pagination(apiv2_client, defaults):
     assert response_asset.json["next_cursor"] is None
     assert response_asset.json["result_count"] == 1
 
+    # Test that next_cursor is None when using sort (cursor is ignored with sort)
+    # Using /v2/orders which uses select_rows with sort support
+    # First verify that without sort, we get a next_cursor when there are more results
+    url_no_sort = "/v2/orders?limit=1"
+    response_no_sort = apiv2_client.get(url_no_sort)
+    assert response_no_sort.status_code == 200
+    assert response_no_sort.json["result_count"] > 1  # fixtures have 7 orders
+    assert response_no_sort.json["next_cursor"] is not None
+    # Now verify that with sort, next_cursor is None to avoid infinite loops
+    url_sorted = "/v2/orders?limit=1&sort=expiration:desc"
+    response_sorted = apiv2_client.get(url_sorted)
+    assert response_sorted.status_code == 200
+    assert response_sorted.json["next_cursor"] is None
+
 
 def redirect_to_api_v1():
     pass

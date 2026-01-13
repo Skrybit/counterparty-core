@@ -333,7 +333,12 @@ def select_rows(
         result_count = cursor.fetchone()["count"]
 
     if result and len(result) > limit:
-        next_cursor = result[-1][cursor_field]
+        # Don't return a cursor when using sort or offset
+        # (cursor is ignored in those cases, so returning one would cause infinite loops)
+        if sort is not None or offset is not None:
+            next_cursor = None
+        else:
+            next_cursor = result[-1][cursor_field]
         result = result[:-1]
     else:
         next_cursor = None
@@ -1885,7 +1890,7 @@ def get_sweeps_by_address(
 def get_address_balances(
     state_db,
     address: str,
-    type: BalanceType = all,  # pylint: disable=W0622
+    type: BalanceType = "all",  # pylint: disable=W0622
     cursor: int = None,
     limit: int = 100,
     offset: int = None,

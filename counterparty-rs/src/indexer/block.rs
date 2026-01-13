@@ -1,4 +1,5 @@
 use super::config::Config;
+#[allow(deprecated)]
 use pyo3::{
     exceptions::PyException,
     types::{PyAnyMethods, PyBytes, PyDict, PyTuple},
@@ -21,22 +22,23 @@ pub struct Vin {
     pub info: Option<VinOutput>,
 }
 
+#[allow(deprecated)]
 impl IntoPy<PyObject> for Vin {
     #[allow(clippy::unwrap_used)]
     fn into_py(self, py: Python<'_>) -> PyObject {
-        let dict = PyDict::new_bound(py);
+        let dict = PyDict::new(py);
         dict.set_item("hash", self.hash).unwrap();
         dict.set_item("n", self.n).unwrap();
         dict.set_item("sequence", self.sequence).unwrap();
-        dict.set_item("script_sig", PyBytes::new_bound(py, &self.script_sig))
+        dict.set_item("script_sig", PyBytes::new(py, &self.script_sig))
             .unwrap();
 
         if let Some(info) = self.info {
-            let info_dict = PyDict::new_bound(py);
+            let info_dict = PyDict::new(py);
             info_dict
                 .set_item(
                     "script_pub_key",
-                    PyBytes::new_bound(py, &info.script_pub_key),
+                    PyBytes::new(py, &info.script_pub_key),
                 )
                 .unwrap();
             info_dict.set_item("value", info.value).unwrap();
@@ -57,14 +59,15 @@ pub struct Vout {
     //pub is_segwit: bool,
 }
 
+#[allow(deprecated)]
 impl IntoPy<PyObject> for Vout {
     #[allow(clippy::unwrap_used)]
     fn into_py(self, py: Python<'_>) -> PyObject {
-        let dict = PyDict::new_bound(py);
+        let dict = PyDict::new(py);
         dict.set_item("value", self.value).unwrap();
         dict.set_item(
             "script_pub_key",
-            PyBytes::new_bound(py, &self.script_pub_key),
+            PyBytes::new(py, &self.script_pub_key),
         )
         .unwrap();
         //dict.set_item("is_segwit", self.is_segwit).unwrap();
@@ -78,9 +81,10 @@ pub struct PotentialDispenser {
     pub value: Option<u64>,
 }
 
+#[allow(deprecated)]
 impl IntoPy<PyObject> for PotentialDispenser {
     fn into_py(self, py: Python<'_>) -> PyObject {
-        PyTuple::new_bound(py, &[self.destination.into_py(py), self.value.into_py(py)]).into_py(py)
+        PyTuple::new(py, &[self.destination.into_py(py), self.value.into_py(py)]).unwrap().into_py(py)
     }
 }
 
@@ -94,6 +98,7 @@ pub struct ParsedVouts {
     pub is_reveal_tx: bool,
 }
 
+#[allow(deprecated)]
 impl IntoPy<PyObject> for ParsedVouts {
     fn into_py(self, py: Python<'_>) -> PyObject {
         let dispensers: Vec<PyObject> = self
@@ -101,17 +106,18 @@ impl IntoPy<PyObject> for ParsedVouts {
             .into_iter()
             .map(|pd| pd.into_py(py))
             .collect();
-        PyTuple::new_bound(
+        PyTuple::new(
             py,
             &[
                 self.destinations.into_py(py),
                 self.btc_amount.into_py(py),
                 self.fee.into_py(py),
-                PyBytes::new_bound(py, &self.data).into_py(py),
+                PyBytes::new(py, &self.data).into_py(py),
                 dispensers.into_py(py),
                 self.is_reveal_tx.into_py(py),
             ],
         )
+        .unwrap()
         .into_py(py)
     }
 }
@@ -130,10 +136,11 @@ pub struct Transaction {
     pub vout: Vec<Vout>,
 }
 
+#[allow(deprecated)]
 impl IntoPy<PyObject> for Transaction {
     #[allow(clippy::unwrap_used)]
     fn into_py(self, py: Python<'_>) -> PyObject {
-        let dict = PyDict::new_bound(py);
+        let dict = PyDict::new(py);
         dict.set_item("version", self.version).unwrap();
         dict.set_item("segwit", self.segwit).unwrap();
         dict.set_item("coinbase", self.coinbase).unwrap();
@@ -178,10 +185,11 @@ pub struct Block {
     pub transactions: Vec<Transaction>,
 }
 
+#[allow(deprecated)]
 impl IntoPy<PyObject> for Block {
     #[allow(clippy::unwrap_used)]
     fn into_py(self, py: Python<'_>) -> PyObject {
-        let dict = PyDict::new_bound(py);
+        let dict = PyDict::new(py);
         dict.set_item("height", self.height).unwrap();
         dict.set_item("block_index", self.height).unwrap();
         dict.set_item("version", self.version).unwrap();

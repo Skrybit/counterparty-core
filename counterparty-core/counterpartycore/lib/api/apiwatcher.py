@@ -413,6 +413,15 @@ def update_balances(state_db, event):
     if event["event"] not in ["DEBIT", "CREDIT"]:
         return
 
+    # Skip events that are already reflected in balances copied from ledger_db.
+    # This prevents double-counting after a state_db rollback when ledger_db
+    # has already reparsed ahead of the rollback point.
+    # See dbbuilder.record_balances_copied_block() for full explanation.
+    balances_copied_at_block = database.get_config_value(state_db, "BALANCES_COPIED_AT_BLOCK")
+    if balances_copied_at_block is not None:
+        if event["block_index"] <= int(balances_copied_at_block):
+            return  # Already accounted for in the copied balances
+
     cursor = state_db.cursor()
 
     event_bindings = get_event_bindings(event)
@@ -516,6 +525,16 @@ def update_last_parsed_events(state_db, event):
     cursor = state_db.cursor()
     cursor.execute(sql, event)
     update_last_parsed_events_cache(state_db, event)
+
+    # Clear the BALANCES_COPIED_AT_BLOCK marker once we've caught up.
+    # This marker was set during rollback to prevent double-counting of
+    # CREDIT/DEBIT events. Once we've parsed past the copied block,
+    # all future events should be applied normally.
+    if event["event"] == "BLOCK_PARSED":
+        balances_copied_at_block = database.get_config_value(state_db, "BALANCES_COPIED_AT_BLOCK")
+        if balances_copied_at_block is not None:
+            if event["block_index"] >= int(balances_copied_at_block):
+                database.set_config_value(state_db, "BALANCES_COPIED_AT_BLOCK", None)
 
 
 def get_last_parsed_event_index(state_db, no_cache=False):

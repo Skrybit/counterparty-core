@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use pyo3::{exceptions::PyValueError, types::PyDict, FromPyObject, PyAny, PyErr, PyResult};
+use pyo3::{exceptions::PyValueError, types::{PyAnyMethods, PyDict, PyDictMethods}, Bound, FromPyObject, PyAny, PyErr, PyResult};
 use tracing::level_filters::LevelFilter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,7 +10,7 @@ pub enum Mode {
 }
 
 impl<'source> FromPyObject<'source> for Mode {
-    fn extract(obj: &'source PyAny) -> PyResult<Self> {
+    fn extract_bound(obj: &Bound<'source, PyAny>) -> PyResult<Self> {
         let mode_str: String = obj.extract()?;
         match mode_str.trim().to_lowercase().as_str() {
             "indexer" => Ok(Mode::Indexer),
@@ -32,7 +32,7 @@ impl From<LogLevel> for LevelFilter {
 }
 
 impl<'source> FromPyObject<'source> for LogLevel {
-    fn extract(obj: &'source PyAny) -> PyResult<Self> {
+    fn extract_bound(obj: &Bound<'source, PyAny>) -> PyResult<Self> {
         let level_str: String = obj.extract()?;
         match level_str.trim().to_lowercase().as_str() {
             "trace" => Ok(LogLevel(LevelFilter::TRACE)),
@@ -58,7 +58,7 @@ pub enum Network {
 }
 
 impl<'source> FromPyObject<'source> for Network {
-    fn extract(obj: &'source PyAny) -> PyResult<Self> {
+    fn extract_bound(obj: &Bound<'source, PyAny>) -> PyResult<Self> {
         let network_str: String = obj.extract()?;
         match network_str.trim().to_lowercase().as_str() {
             "mainnet" => Ok(Network::Mainnet),
@@ -212,7 +212,7 @@ impl Config {
 }
 
 impl<'source> FromPyObject<'source> for Config {
-    fn extract(obj: &'source PyAny) -> PyResult<Self> {
+    fn extract_bound(obj: &Bound<'source, PyAny>) -> PyResult<Self> {
         let dict = obj.downcast::<PyDict>()?;
         let rpc_address: String = dict
             .get_item("rpc_address")?

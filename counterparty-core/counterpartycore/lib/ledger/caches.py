@@ -5,6 +5,7 @@ from cachetools import LRUCache
 
 from counterpartycore.lib import config
 from counterpartycore.lib.ledger.currentstate import CurrentState
+from counterpartycore.lib.parser.gettxinfo import KNOWN_SOURCES
 from counterpartycore.lib.utils import database, helpers
 
 logger = logging.getLogger(config.LOGGER_NAME)
@@ -125,27 +126,86 @@ class UTXOBalancesCache(metaclass=helpers.SingletonMeta):
         # Value is True if has balance, False if explicitly known to have no balance
         self.utxos_with_balance = LRUCache(maxsize=self.max_size)
 
-        sql = "SELECT utxo, asset, quantity, MAX(rowid) FROM balances WHERE utxo IS NOT NULL GROUP BY utxo, asset"
         cursor = db.cursor()
+
+        # Load UTXOs with balance from the balances table
+        sql = "SELECT utxo, asset, quantity, MAX(rowid) FROM balances WHERE utxo IS NOT NULL GROUP BY utxo, asset"
         cursor.execute(sql)
         utxo_balances = cursor.fetchall()
         for utxo_balance in utxo_balances:
             self.utxos_with_balance[utxo_balance["utxo"]] = True
-        # to not breack `txlist_hash`es we rebuild the cache in the same way it is built during transaction parsing:
-        # invalid attachs are added to the cache (see gettxinfo.update_utxo_balances_cache())
+
+        # Add destinations from invalid attachs
+        # (see gettxinfo.update_utxo_balances_cache())
         sql = "SELECT tx_hash, utxos_info FROM transactions_with_status WHERE valid IS FALSE AND transaction_type = ?"
         cursor.execute(sql, ("attach",))
         invalid_attach_transactions = cursor.fetchall()
         for transaction in invalid_attach_transactions:
             utxos_info = transaction["utxos_info"].split(" ")
-            if utxos_info[1] != "":
+            if len(utxos_info) >= 2 and utxos_info[1] != "":
                 self.utxos_with_balance[utxos_info[1]] = True
+
+        # Add destinations from KNOWN_SOURCES transactions and their descendants
+        # KNOWN_SOURCES forces a source even when the source has no balance in the balances table,
+        # which adds the destination to cache during parsing but not to the balances table.
+        # We must follow the chain of transactions that consume these destinations.
+        self._add_known_sources_descendants(cursor)
 
         logger.debug(
             "UTXO balances cache initialised (max_size=%s, loaded=%d)",
             self.max_size,
             len(self.utxos_with_balance),
         )
+
+    def _add_known_sources_descendants(self, cursor):
+        """Add to cache the destinations from KNOWN_SOURCES and all descendant transactions."""
+        pending_utxos = set()
+
+        # Start with destinations from KNOWN_SOURCES
+        for tx_hash, source in KNOWN_SOURCES.items():
+            if source != "":
+                tx = cursor.execute(
+                    "SELECT utxos_info, transaction_type FROM transactions WHERE tx_hash = ?",
+                    (tx_hash,),
+                ).fetchone()
+                if tx:
+                    utxos_info = tx["utxos_info"].split(" ")
+                    if len(utxos_info) >= 2 and utxos_info[1] != "":
+                        self.utxos_with_balance[utxos_info[1]] = True
+                        pending_utxos.add(utxos_info[1])
+
+        # Follow the chain: find transactions that consume these UTXOs
+        processed = set()
+        while pending_utxos:
+            utxo = pending_utxos.pop()
+            if utxo in processed:
+                continue
+            processed.add(utxo)
+
+            # Find transactions where this UTXO is a source
+            # utxos_info format: "sources destination num_outputs [op_return_index]"
+            # We search for transactions where utxos_info starts with this UTXO
+            txs = cursor.execute(
+                """SELECT utxos_info, transaction_type FROM transactions
+                   WHERE transaction_type IN ('utxomove', 'attach', 'detach')
+                   AND utxos_info LIKE ?
+                   ORDER BY tx_index""",
+                (f"{utxo}%",),
+            ).fetchall()
+
+            for tx in txs:
+                utxos_info = tx["utxos_info"].split(" ")
+                transaction_type = tx["transaction_type"]
+                if len(utxos_info) >= 2:
+                    sources = utxos_info[0].split(",")
+                    if utxo in sources:
+                        # This UTXO is consumed, remove from cache
+                        self.utxos_with_balance.pop(utxo, None)
+                        # Add destination if not a detach
+                        if utxos_info[1] != "" and transaction_type != "detach":
+                            self.utxos_with_balance[utxos_info[1]] = True
+                            if utxos_info[1] not in processed:
+                                pending_utxos.add(utxos_info[1])
 
     def has_balance(self, utxo):
         # Check cache first
