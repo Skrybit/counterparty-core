@@ -635,16 +635,53 @@ def regtest_to_mainnet_address(address: str) -> str:
         return address  # Return as-is if not convertible
 
 
+def generate_placeholder_hash(index: int) -> str:
+    """Generate a placeholder hash with a recognizable pattern."""
+    # Format: 64 hex characters with sequential numbering
+    # Example: 0000000000000000000000000000000000000000000000000000000000000001
+    return f"{index:064x}"
+
+
+def convert_hashes_to_placeholder(content: str) -> tuple[str, int]:
+    """Replace all 64-char hex hashes with sequential placeholder hashes.
+
+    Returns the modified content and the count of unique hashes converted.
+    """
+    # Pattern for 64-character hex strings (tx_hash, block_hash, etc.)
+    hash_pattern = r"[a-f0-9]{64}"
+
+    # Find all unique hashes and sort them for deterministic ordering
+    all_hashes = set(re.findall(hash_pattern, content))
+    # Sort to ensure deterministic mapping across runs
+    sorted_hashes = sorted(all_hashes)
+
+    # Create mapping from regtest hash to placeholder hash
+    hash_mapping = {}
+    for index, regtest_hash in enumerate(sorted_hashes, start=1):
+        hash_mapping[regtest_hash] = generate_placeholder_hash(index)
+
+    # Replace all hashes (longer matches first to avoid partial replacements)
+    # Since all hashes are 64 chars, order doesn't matter for length
+    # but we process by descending hash value to avoid substring issues
+    for regtest_hash in sorted(hash_mapping.keys(), reverse=True):
+        placeholder_hash = hash_mapping[regtest_hash]
+        content = content.replace(regtest_hash, placeholder_hash)
+
+    return content, len(hash_mapping)
+
+
 def convert_apiary_to_mainnet(filepath: str = None):
-    """Replace all regtest addresses with their mainnet equivalents in apiary.apib."""
+    """Replace all regtest addresses and hashes with mainnet equivalents in apiary.apib."""
     if filepath is None:
         filepath = API_BLUEPRINT_FILE
 
-    print(f"Converting regtest addresses to mainnet in {filepath}...")
+    print(f"Converting regtest data to mainnet format in {filepath}...")
 
     with open(filepath, "r") as f:
         content = f.read()
 
+    # Step 1: Convert addresses
+    print("  Converting addresses...")
     # Patterns for different types of regtest addresses
     # bech32/bech32m regtest (bcrt1...)
     bech32_pattern = r"bcrt1[a-zA-HJ-NP-Z0-9]{39,59}"
@@ -654,7 +691,7 @@ def convert_apiary_to_mainnet(filepath: str = None):
     p2sh_pattern = r"\b2[a-km-zA-HJ-NP-Z1-9]{25,34}\b"
 
     all_patterns = [bech32_pattern, p2pkh_pattern, p2sh_pattern]
-    converted_count = 0
+    address_count = 0
 
     for pattern in all_patterns:
         addresses = set(re.findall(pattern, content))
@@ -662,12 +699,19 @@ def convert_apiary_to_mainnet(filepath: str = None):
             mainnet_addr = regtest_to_mainnet_address(addr)
             if mainnet_addr != addr:
                 content = content.replace(addr, mainnet_addr)
-                converted_count += 1
+                address_count += 1
+
+    print(f"  Converted {address_count} unique addresses.")
+
+    # Step 2: Convert hashes
+    print("  Converting hashes...")
+    content, hash_count = convert_hashes_to_placeholder(content)
+    print(f"  Converted {hash_count} unique hashes.")
 
     with open(filepath, "w") as f:
         f.write(content)
 
-    print(f"Converted {converted_count} unique addresses to mainnet format.")
+    print(f"Conversion complete: {address_count} addresses, {hash_count} hashes.")
 
 
 if __name__ == "__main__":
