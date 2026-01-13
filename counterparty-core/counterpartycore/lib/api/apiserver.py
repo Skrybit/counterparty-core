@@ -19,7 +19,7 @@ from sentry_sdk import configure_scope as configure_sentry_scope
 from sentry_sdk import start_span as start_sentry_span
 
 from counterpartycore.lib import config, exceptions
-from counterpartycore.lib.api import apiwatcher, dbbuilder, queries, verbose, wsgi
+from counterpartycore.lib.api import apiwatcher, dbbuilder, healthz, queries, verbose, wsgi
 from counterpartycore.lib.api.routes import ROUTES, function_needs_db
 from counterpartycore.lib.cli.initialise import initialise_log_and_config
 from counterpartycore.lib.cli.log import init_api_access_log
@@ -454,6 +454,13 @@ def init_flask_app():
             "/v2/blueprint",
             view_func=handle_doc,
             methods=methods,
+            strict_slashes=False,
+            provide_automatic_options=False,
+        )
+        app.add_url_rule(
+            "/rate-limited",
+            view_func=healthz.rate_limited,
+            methods=["GET", "POST", "OPTIONS"],
             strict_slashes=False,
             provide_automatic_options=False,
         )

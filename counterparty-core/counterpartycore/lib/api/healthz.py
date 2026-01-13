@@ -90,3 +90,20 @@ def check_server_health(db, check_type: str = "light"):
     if not healthz(db, check_type):
         return {"status": "Unhealthy"}
     return {"status": "Healthy"}
+
+
+def rate_limited():
+    """
+    Returns a 429 rate limit error response.
+    Used as a target for Cloud Armor rate limiting rules.
+    """
+    # Handle CORS preflight
+    if flask.request.method == "OPTIONS":
+        response = flask.Response("", 204)
+    else:
+        result = {"error": "rate_limit_exceeded"}
+        response = flask.Response(helpers.to_json(result), 429, mimetype="application/json")
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    return response
