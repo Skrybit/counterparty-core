@@ -71,7 +71,6 @@ def test_argparser():
         "db_max_connections": 50,
         "db_cache_size": -262144,
         "db_mmap_size": 67108864,
-        "asset_cache_max_size": 50000,
         "utxo_cache_max_size": 100000,
         "not_supported_tx_cache_max_size": 200000,
         "json_logs": False,

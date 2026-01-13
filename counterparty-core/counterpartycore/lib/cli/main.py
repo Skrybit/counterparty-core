@@ -359,14 +359,6 @@ CONFIG_ARGS = [
         },
     ],
     [
-        ("--asset-cache-max-size",),
-        {
-            "type": int,
-            "default": config.DEFAULT_ASSET_CACHE_MAX_SIZE,
-            "help": "Maximum entries in the asset info LRU cache (0 = unlimited)",
-        },
-    ],
-    [
         ("--utxo-cache-max-size",),
         {
             "type": int,

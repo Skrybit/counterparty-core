@@ -132,7 +132,6 @@ def initialise_config(
     db_max_connections=config.DEFAULT_DB_MAX_CONNECTIONS,
     db_cache_size=config.DEFAULT_DB_CACHE_SIZE,
     db_mmap_size=config.DEFAULT_DB_MMAP_SIZE,
-    asset_cache_max_size=config.DEFAULT_ASSET_CACHE_MAX_SIZE,
     utxo_cache_max_size=config.DEFAULT_UTXO_CACHE_MAX_SIZE,
     not_supported_tx_cache_max_size=config.DEFAULT_NOT_SUPPORTED_TX_CACHE_MAX_SIZE,
     wsgi_server=None,
@@ -533,7 +532,6 @@ def initialise_config(
     config.DB_MAX_CONNECTIONS = db_max_connections
     config.DB_CACHE_SIZE = db_cache_size
     config.DB_MMAP_SIZE = db_mmap_size
-    config.ASSET_CACHE_MAX_SIZE = asset_cache_max_size
     config.UTXO_CACHE_MAX_SIZE = utxo_cache_max_size
     config.NOT_SUPPORTED_TX_CACHE_MAX_SIZE = not_supported_tx_cache_max_size
     config.WSGI_SERVER = wsgi_server
