@@ -14,16 +14,15 @@ class AssetCache(metaclass=helpers.SingletonMeta):
     def __init__(self, db) -> None:
         # Store db reference for lazy loading on cache miss
         self.db = db
-        # Use LRU cache with bounded size for asset info (0 = unlimited)
-        max_size = getattr(config, "ASSET_CACHE_MAX_SIZE", config.DEFAULT_ASSET_CACHE_MAX_SIZE)
-        self.max_size = max_size if max_size > 0 else float("inf")
-        self.assets = LRUCache(maxsize=self.max_size)
+        # Load all assets into memory (unbounded dict)
+        # AssetCache LRU caused 10x slowdown on mainnet: 56MB memory savings not worth it
+        self.assets = {}
         # Keep full dicts for supply calculations (these are just numbers, much smaller)
         self.assets_total_issued = {}
         self.assets_total_destroyed = {}
         start = time.time()
         logger.debug("Initialising asset cache...")
-        # asset info - load into bounded LRU cache
+        # asset info - load all assets
         sql = """
             SELECT *, MAX(rowid) AS rowid FROM issuances
             WHERE status = 'valid'
@@ -63,9 +62,8 @@ class AssetCache(metaclass=helpers.SingletonMeta):
             self.assets_total_destroyed[count["asset"]] = count["total"]
 
         logger.debug(
-            "Asset cache initialised in %.2f seconds (max_size=%s, loaded=%d)",
+            "Asset cache initialised in %.2f seconds (loaded=%d assets)",
             duration,
-            self.max_size,
             len(self.assets),
         )
 
