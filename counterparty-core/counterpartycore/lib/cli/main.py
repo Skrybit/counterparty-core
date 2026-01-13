@@ -440,6 +440,14 @@ CONFIG_ARGS = [
         },
     ],
     [
+        ("--memory-profile",),
+        {
+            "action": "store_true",
+            "default": False,
+            "help": "Enable memory profiling; logs memory usage and cache sizes periodically",
+        },
+    ],
+    [
         ("--enable-all-protocol-changes",),
         {
             "action": "store_true",

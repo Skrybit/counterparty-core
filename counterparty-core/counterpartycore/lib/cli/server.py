@@ -22,7 +22,7 @@ from counterpartycore.lib.backend import rsfetcher
 from counterpartycore.lib.cli import bootstrap, log
 from counterpartycore.lib.ledger.backendheight import BackendHeight
 from counterpartycore.lib.ledger.currentstate import CurrentState
-from counterpartycore.lib.monitors import slack
+from counterpartycore.lib.monitors import memory_profiler, slack
 from counterpartycore.lib.parser import blocks, check, follow
 from counterpartycore.lib.utils import database, helpers
 
@@ -87,6 +87,7 @@ class CounterpartyServer(threading.Thread):
         self.backend_height_thread = None
         self.log_stream = log_stream
         self.periodic_profiler = None
+        self.mem_profiler = None
         self.stop_when_ready = stop_when_ready
         self.stopped = False
 
@@ -100,6 +101,13 @@ class CounterpartyServer(threading.Thread):
         logger.debug("Config: %s", custom_config)
 
     def run_server(self):
+        # Start memory profiler if enabled via --memory-profile flag
+        if getattr(config, "MEMORY_PROFILE", False):
+            self.mem_profiler = memory_profiler.start_memory_profiler(
+                interval_seconds=60,  # Log every minute for detailed tracking
+                enable_tracemalloc=True,
+            )
+
         # download bootstrap if necessary
         if (
             not os.path.exists(config.DATABASE) and self.args.catch_up == "bootstrap"
@@ -213,6 +221,10 @@ class CounterpartyServer(threading.Thread):
         if self.periodic_profiler:
             logger.info("Stopping periodic profiler...")
             self.periodic_profiler.stop()
+
+        if self.mem_profiler:
+            logger.info("Stopping memory profiler...")
+            memory_profiler.stop_memory_profiler()
 
         self.stopped = True
         logger.info("Shutdown complete.")

@@ -24,7 +24,7 @@ from counterpartycore.lib.api.routes import ROUTES, function_needs_db
 from counterpartycore.lib.cli.initialise import initialise_log_and_config
 from counterpartycore.lib.cli.log import init_api_access_log
 from counterpartycore.lib.ledger.currentstate import CurrentState
-from counterpartycore.lib.monitors import sentry
+from counterpartycore.lib.monitors import memory_profiler, sentry
 from counterpartycore.lib.parser import check
 from counterpartycore.lib.utils import address, database, helpers
 from counterpartycore.lib.utils.database import LedgerDBConnectionPool, StateDBConnectionPool
@@ -500,6 +500,7 @@ def run_apiserver(
     wsgi_server = None
     parent_checker = None
     watcher = None
+    mem_profiler = None
 
     try:
         # Set signal handlers for graceful shutdown
@@ -509,6 +510,13 @@ def run_apiserver(
         # Initialize Sentry, logging, config, etc.
         sentry.init()
         initialise_log_and_config(argparse.Namespace(**args), api=True, log_stream=log_stream)
+
+        # Start memory profiler if enabled via --memory-profile flag
+        if getattr(config, "MEMORY_PROFILE", False):
+            mem_profiler = memory_profiler.start_memory_profiler(
+                interval_seconds=60,  # Log every minute for detailed tracking
+                enable_tracemalloc=True,
+            )
 
         if args["rebuild_state_db"]:
             dbbuilder.build_state_db()
@@ -561,6 +569,10 @@ def run_apiserver(
         if watcher is not None:
             watcher.stop()
             watcher.join()
+
+        # Stop memory profiler
+        if mem_profiler is not None:
+            memory_profiler.stop_memory_profiler()
 
         logger.info("API Server stopped.")
         server_ready_value.value = 2

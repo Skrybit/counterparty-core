@@ -1,0 +1,291 @@
+"""
+Memory profiler for tracking memory usage and identifying leaks.
+
+Enable via --memory-profile CLI flag.
+
+Logs memory usage of:
+- Process memory (RSS, VmData)
+- tracemalloc top allocations
+- Known caches (BLOCK_CACHE, OrdersCache, etc.)
+"""
+
+import gc
+import logging
+import sys
+import threading
+import tracemalloc
+
+from counterpartycore.lib import config
+from counterpartycore.lib.utils import helpers
+
+logger = logging.getLogger(config.LOGGER_NAME)
+
+# Default interval in seconds (5 minutes)
+DEFAULT_PROFILE_INTERVAL = 300
+
+# Number of top allocations to log
+TOP_ALLOCATIONS = 10
+
+
+def get_process_memory():
+    """Get process memory stats from /proc/self/status (Linux only)."""
+    try:
+        with open("/proc/self/status", "r") as f:
+            status = f.read()
+
+        stats = {}
+        for line in status.split("\n"):
+            if line.startswith("VmRSS:"):
+                stats["rss_kb"] = int(line.split()[1])
+            elif line.startswith("VmData:"):
+                stats["data_kb"] = int(line.split()[1])
+            elif line.startswith("VmHWM:"):
+                stats["hwm_kb"] = int(line.split()[1])
+        return stats
+    except (FileNotFoundError, IOError):
+        # Not on Linux, try resource module
+        try:
+            import platform
+            import resource
+
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            # On macOS, ru_maxrss is in bytes; on Linux it's in KB
+            if platform.system() == "Darwin":
+                rss_kb = usage.ru_maxrss // 1024
+            else:
+                rss_kb = usage.ru_maxrss
+            return {
+                "rss_kb": rss_kb,
+                "data_kb": 0,
+                "hwm_kb": rss_kb,
+            }
+        except ImportError:
+            return {}
+
+
+def get_cache_sizes():
+    """Get sizes of known caches."""
+    sizes = {}
+
+    # Import here to avoid circular imports
+    try:
+        from counterpartycore.lib.ledger.caches import AssetCache, OrdersCache, UTXOBalancesCache
+
+        # AssetCache
+        if AssetCache in helpers.SingletonMeta._instances:
+            cache = helpers.SingletonMeta._instances[AssetCache]
+            sizes["AssetCache.assets"] = len(getattr(cache, "assets", {}))
+            sizes["AssetCache.total_issued"] = len(getattr(cache, "assets_total_issued", {}))
+            sizes["AssetCache.total_destroyed"] = len(getattr(cache, "assets_total_destroyed", {}))
+
+        # OrdersCache
+        if OrdersCache in helpers.SingletonMeta._instances:
+            cache = helpers.SingletonMeta._instances[OrdersCache]
+            if hasattr(cache, "cache_db") and cache.cache_db:
+                try:
+                    cursor = cache.cache_db.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM orders")
+                    row = cursor.fetchone()
+                    sizes["OrdersCache.orders"] = row[0] if row else 0
+                except Exception:
+                    sizes["OrdersCache.orders"] = "error"
+
+        # UTXOBalancesCache
+        if UTXOBalancesCache in helpers.SingletonMeta._instances:
+            cache = helpers.SingletonMeta._instances[UTXOBalancesCache]
+            sizes["UTXOBalancesCache.utxos"] = len(getattr(cache, "utxos_with_balance", {}))
+    except ImportError:
+        pass
+
+    # NotSupportedTransactionsCache
+    try:
+        from counterpartycore.lib.parser.follow import NotSupportedTransactionsCache
+
+        if NotSupportedTransactionsCache in helpers.SingletonMeta._instances:
+            cache = helpers.SingletonMeta._instances[NotSupportedTransactionsCache]
+            sizes["NotSupportedTxCache"] = len(getattr(cache, "not_suppported_txs", []))
+    except ImportError:
+        pass
+
+    # BLOCK_CACHE (global in apiserver)
+    try:
+        from counterpartycore.lib.api import apiserver
+
+        sizes["BLOCK_CACHE"] = len(getattr(apiserver, "BLOCK_CACHE", {}))
+
+        # Estimate memory usage of BLOCK_CACHE values
+        if hasattr(apiserver, "BLOCK_CACHE"):
+            total_size = 0
+            for key, value in apiserver.BLOCK_CACHE.items():
+                total_size += sys.getsizeof(key) + sys.getsizeof(value)
+            sizes["BLOCK_CACHE_bytes"] = total_size
+    except ImportError:
+        pass
+
+    # Connection pool sizes
+    try:
+        from counterpartycore.lib.utils.database import (
+            LedgerDBConnectionPool,
+            StateDBConnectionPool,
+        )
+
+        if LedgerDBConnectionPool in helpers.SingletonMeta._instances:
+            pool = helpers.SingletonMeta._instances[LedgerDBConnectionPool]
+            if hasattr(pool, "_pool"):
+                sizes["LedgerDBPool"] = (
+                    pool._pool.qsize() if hasattr(pool._pool, "qsize") else "N/A"
+                )
+
+        if StateDBConnectionPool in helpers.SingletonMeta._instances:
+            pool = helpers.SingletonMeta._instances[StateDBConnectionPool]
+            if hasattr(pool, "_pool"):
+                sizes["StateDBPool"] = pool._pool.qsize() if hasattr(pool._pool, "qsize") else "N/A"
+    except ImportError:
+        pass
+
+    return sizes
+
+
+def get_tracemalloc_top(limit=TOP_ALLOCATIONS):
+    """Get top memory allocations from tracemalloc."""
+    if not tracemalloc.is_tracing():
+        return []
+
+    snapshot = tracemalloc.take_snapshot()
+    # Filter out tracemalloc's own allocations
+    snapshot = snapshot.filter_traces(
+        (
+            tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+            tracemalloc.Filter(False, "<frozen importlib._bootstrap_external>"),
+            tracemalloc.Filter(False, tracemalloc.__file__),
+        )
+    )
+
+    top_stats = snapshot.statistics("lineno")[:limit]
+
+    results = []
+    for stat in top_stats:
+        results.append(
+            {
+                "file": str(stat.traceback),
+                "size_kb": stat.size / 1024,
+                "count": stat.count,
+            }
+        )
+
+    return results
+
+
+def log_memory_profile():
+    """Log current memory profile."""
+    # Force garbage collection first
+    gc.collect()
+
+    # Process memory
+    proc_mem = get_process_memory()
+    if proc_mem:
+        logger.info(
+            "Memory Profile - Process: RSS=%.1fMB, Data=%.1fMB, HWM=%.1fMB",
+            proc_mem.get("rss_kb", 0) / 1024,
+            proc_mem.get("data_kb", 0) / 1024,
+            proc_mem.get("hwm_kb", 0) / 1024,
+        )
+
+    # Cache sizes
+    cache_sizes = get_cache_sizes()
+    if cache_sizes:
+        cache_info = ", ".join(f"{k}={v}" for k, v in sorted(cache_sizes.items()))
+        logger.info("Memory Profile - Caches: %s", cache_info)
+
+    # tracemalloc top allocations
+    top_allocs = get_tracemalloc_top(5)
+    if top_allocs:
+        for i, alloc in enumerate(top_allocs, 1):
+            logger.info(
+                "Memory Profile - Top %d: %.1fKB (%d blocks) @ %s",
+                i,
+                alloc["size_kb"],
+                alloc["count"],
+                alloc["file"][:100],  # Truncate long paths
+            )
+
+    # tracemalloc total
+    if tracemalloc.is_tracing():
+        current, peak = tracemalloc.get_traced_memory()
+        logger.info(
+            "Memory Profile - tracemalloc: current=%.1fMB, peak=%.1fMB",
+            current / 1024 / 1024,
+            peak / 1024 / 1024,
+        )
+
+
+class MemoryProfiler(threading.Thread):
+    """Background thread that periodically logs memory usage."""
+
+    def __init__(self, interval_seconds=None):
+        super().__init__(daemon=True, name="MemoryProfiler")
+        self.interval = interval_seconds or DEFAULT_PROFILE_INTERVAL
+        self.stop_event = threading.Event()
+
+    def run(self):
+        """Main loop - log memory profile at regular intervals."""
+        logger.info(
+            "Memory profiler started (interval=%ds, tracemalloc=%s)",
+            self.interval,
+            "enabled" if tracemalloc.is_tracing() else "disabled",
+        )
+
+        while not self.stop_event.is_set():
+            try:
+                log_memory_profile()
+            except Exception as e:
+                logger.error("Error in memory profiler: %s", e)
+
+            # Wait for interval or stop event
+            self.stop_event.wait(self.interval)
+
+        logger.info("Memory profiler stopped")
+
+    def stop(self):
+        """Stop the profiler thread."""
+        self.stop_event.set()
+
+
+# Module-level state container (avoids global statement)
+_state = {"profiler": None}
+
+
+def start_memory_profiler(interval_seconds=None, enable_tracemalloc=True):
+    """
+    Start the memory profiler.
+
+    Args:
+        interval_seconds: Logging interval (default: 300 = 5 minutes)
+        enable_tracemalloc: Whether to enable tracemalloc for allocation tracking
+    """
+    if _state["profiler"] is not None:
+        logger.warning("Memory profiler already running")
+        return _state["profiler"]
+
+    # Start tracemalloc if requested
+    if enable_tracemalloc and not tracemalloc.is_tracing():
+        tracemalloc.start(10)  # Keep 10 frames of traceback
+        logger.info("tracemalloc started")
+
+    # Create and start profiler thread
+    _state["profiler"] = MemoryProfiler(interval_seconds)
+    _state["profiler"].start()
+
+    return _state["profiler"]
+
+
+def stop_memory_profiler():
+    """Stop the memory profiler if running."""
+    if _state["profiler"] is not None:
+        _state["profiler"].stop()
+        _state["profiler"].join(timeout=5)
+        _state["profiler"] = None
+
+    if tracemalloc.is_tracing():
+        tracemalloc.stop()
+        logger.info("tracemalloc stopped")

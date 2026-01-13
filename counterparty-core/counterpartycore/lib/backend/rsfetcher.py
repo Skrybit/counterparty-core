@@ -200,10 +200,18 @@ class RSFetcher(metaclass=helpers.SingletonMeta):
         self.stopped_event.set()  # Signal all threads to stop
         try:
             if self.prefetch_task:
-                # No need to cancel; threads should exit when they check the stop event
-                logger.debug("Waiting for prefetch task to finish...")
+                logger.debug("Waiting for prefetch task to finish (timeout: 10s)...")
+                try:
+                    # Wait up to 10 seconds for the prefetch task to complete
+                    self.prefetch_task.result(timeout=10)
+                except TimeoutError:
+                    logger.warning("Prefetch task did not complete in time, forcing shutdown...")
+                except Exception as task_error:  # pylint: disable=broad-except
+                    # Ignore other exceptions during shutdown (e.g., if task was cancelled)
+                    logger.debug("Prefetch task exception during shutdown: %s", task_error)
             if self.executor:
-                self.executor.shutdown(wait=True)
+                # cancel_futures=True cancels pending tasks (Python 3.9+)
+                self.executor.shutdown(wait=False, cancel_futures=True)
                 logger.debug("Executor shutdown complete.")
             if self.fetcher:
                 self.fetcher.stop()

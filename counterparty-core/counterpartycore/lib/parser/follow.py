@@ -319,12 +319,19 @@ class BlockchainWatcher:
 
     def stop(self):
         logger.debug("Stopping blockchain watcher...")
-        # Cancel the handle task
+        # Signal the handle loop to stop
         self.stop_event.set()
-        self.task.cancel()
-        self.loop.stop()
+        # Cancel the handle task
+        if self.task and not self.task.done():
+            self.task.cancel()
+        # Stop the event loop (thread-safe in Python 3.9+)
+        if self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.loop.stop)
         # Clean up ZMQ context
-        self.zmq_context.destroy()
+        try:
+            self.zmq_context.destroy(linger=0)  # Don't wait for pending messages
+        except Exception as e:  # pylint: disable=broad-except
+            logger.debug("Error destroying ZMQ context: %s", e)
         # Stop mempool parser
         if self.mempool_parser:
             self.mempool_parser.stop()
