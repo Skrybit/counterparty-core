@@ -38,11 +38,30 @@ counterparty-server start
 ## Codebase
 
 - Increase BURN_END_TESTNET3 to 99999999
+- Add graceful SIGTERM handling for Kubernetes deployments
+- Improve Docker build caching for Rust components
+
+## Performance & Memory
+
+- Add bounded LRU caches to prevent unbounded memory growth (AssetCache, UTXOBalancesCache, NotSupportedTransactionsCache)
+- Add configurable database connection pool limits (`--db-connection-pool-size`, `--db-max-connections`)
+- Reduce SQLite mmap_size default from 1GB to 64MB per connection (configurable via `--db-mmap-size`)
+- Add periodic garbage collection to reduce memory fragmentation (every 100k API requests)
+- Convert NotSupportedTransactionsCache from O(n) list to O(1) set for faster lookups
+- Add configurable cache size limits: `--asset-cache-max-size`, `--utxo-cache-max-size`, `--not-supported-tx-cache-max-size`
+- Add memory profiler for monitoring cache sizes and process memory (`--memory-profile`)
 
 ## API
 
 
 ## CLI
+
+- Add `--db-connection-pool-size` to configure connection pool size (default: 10)
+- Add `--db-max-connections` to limit total database connections across threads (default: 50, 0=unlimited)
+- Add `--db-cache-size` to configure SQLite cache_size pragma (default: -262144 = 256MB)
+- Add `--db-mmap-size` to configure SQLite mmap_size pragma (default: 67108864 = 64MB)
+- Add `--asset-cache-max-size`, `--utxo-cache-max-size`, `--not-supported-tx-cache-max-size` for cache limits
+- Add `--memory-profile` to enable periodic memory usage logging
 
 # Credits
 
