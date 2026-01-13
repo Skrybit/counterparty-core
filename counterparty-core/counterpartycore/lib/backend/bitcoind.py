@@ -108,7 +108,7 @@ def rpc_call(payload, retry=0):
                     tries,
                     stack_info=config.VERBOSE > 0,
                 )
-                if should_retry() and tries < 10:
+                if should_retry():
                     time.sleep(backoff_time)
                     continue
                 raise exceptions.BitcoindRPCError(str(response.status_code) + " " + response.reason)
