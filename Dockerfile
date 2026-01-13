@@ -14,7 +14,8 @@ RUN apk add --no-cache python3 py3-pip leveldb \
     build-base \
     libffi-dev \
     clang-dev \
-    llvm-dev
+    llvm-dev \
+    patchelf
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
