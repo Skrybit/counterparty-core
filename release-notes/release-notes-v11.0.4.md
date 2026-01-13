@@ -38,9 +38,13 @@ counterparty-server start
 ## Codebase
 
 - Increase BURN_END_TESTNET3 to 99999999
+- Add block parsing timing instrumentation at debug level
 
 ## API
 
+- Fix slow asset lookups by using `COLLATE NOCASE` instead of `UPPER()` for case-insensitive queries
+- Add performance indexes for `assets_info`, `balances`, and `dispensers` tables
+- Optimize list deduplication in verbose mode using sets
 
 ## CLI
 
