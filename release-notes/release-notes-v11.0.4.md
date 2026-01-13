@@ -40,6 +40,7 @@ counterparty-server start
 - Increase BURN_END_TESTNET3 to 99999999
 - Add graceful SIGTERM handling for Kubernetes deployments
 - Improve Docker build caching for Rust components
+- Add block parsing timing instrumentation at debug level
 
 ## Performance & Memory
 
@@ -53,6 +54,9 @@ counterparty-server start
 
 ## API
 
+- Fix slow asset lookups by using `COLLATE NOCASE` instead of `UPPER()` for case-insensitive queries
+- Add performance indexes for `assets_info`, `balances`, and `dispensers` tables
+- Optimize list deduplication in verbose mode using sets
 
 ## CLI
 

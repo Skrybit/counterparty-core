@@ -32,9 +32,9 @@ def inject_issuances_and_block_times(ledger_db, state_db, result_list):
         "backward_asset",
     ]
 
-    # gather asset list and block indexes
-    asset_list = []
-    block_indexes = []
+    # gather asset list and block indexes (use sets for O(1) deduplication)
+    asset_set = set()
+    block_indexes_set = set()
     for result_item in result_list:
         for field_name in [
             "block_index",
@@ -49,19 +49,14 @@ def inject_issuances_and_block_times(ledger_db, state_db, result_list):
                 and result_item["params"][field_name]
             ):
                 result_item["params"][field_name] = int(result_item["params"][field_name])
-            if (
-                field_name in result_item
-                and result_item[field_name] not in block_indexes
-                and result_item[field_name]
-            ):
-                block_indexes.append(result_item[field_name])
+            if field_name in result_item and result_item[field_name]:
+                block_indexes_set.add(result_item[field_name])
             if (
                 "params" in result_item
                 and field_name in result_item["params"]
-                and result_item["params"][field_name] not in block_indexes
                 and result_item["params"][field_name]
             ):
-                block_indexes.append(result_item["params"][field_name])
+                block_indexes_set.add(result_item["params"][field_name])
 
         if (
             "asset_longname" in result_item
@@ -88,17 +83,15 @@ def inject_issuances_and_block_times(ledger_db, state_db, result_list):
             if isinstance(item, list):
                 for sub_item in item:
                     if field_name in sub_item:
-                        if sub_item[field_name] not in asset_list:
-                            asset_list.append(sub_item[field_name])
+                        asset_set.add(sub_item[field_name])
             elif field_name in item:
-                if item[field_name] not in asset_list:
-                    asset_list.append(item[field_name])
+                asset_set.add(item[field_name])
 
-    # get asset issuances
-    issuance_by_asset = ledger.issuances.get_assets_last_issuance(state_db, asset_list)
+    # get asset issuances (convert set to list for function call)
+    issuance_by_asset = ledger.issuances.get_assets_last_issuance(state_db, list(asset_set))
 
-    # get block_time for each block_index
-    block_times = ledger.blocks.get_blocks_time(ledger_db, block_indexes)
+    # get block_time for each block_index (convert set to list for function call)
+    block_times = ledger.blocks.get_blocks_time(ledger_db, list(block_indexes_set))
 
     # inject issuance and block_time
     for result_item in result_list:
@@ -444,15 +437,14 @@ def inject_fiat_prices(ledger_db, result_list):
 
 
 def inject_dispensers(ledger_db, state_db, result_list):
-    # gather dispenser list
-    dispenser_list = []
+    # gather dispenser list (use set for O(1) deduplication)
+    dispenser_set = set()
     for result_item in result_list:
         if "dispenser_tx_hash" in result_item:
-            if result_item["dispenser_tx_hash"] not in dispenser_list:
-                dispenser_list.append(result_item["dispenser_tx_hash"])
+            dispenser_set.add(result_item["dispenser_tx_hash"])
 
-    # get dispenser info
-    dispenser_info = ledger.markets.get_dispensers_info(state_db, dispenser_list)
+    # get dispenser info (convert set to list for function call)
+    dispenser_info = ledger.markets.get_dispensers_info(state_db, list(dispenser_set))
 
     # inject dispenser info
     enriched_result_list = []
