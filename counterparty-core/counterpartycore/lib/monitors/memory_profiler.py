@@ -183,9 +183,15 @@ def get_cache_sizes():
         # Estimate memory usage of BLOCK_CACHE values
         if hasattr(apiserver, "BLOCK_CACHE"):
             total_size = 0
-            for key, value in apiserver.BLOCK_CACHE.items():
-                total_size += sys.getsizeof(key) + sys.getsizeof(value)
-            sizes["BLOCK_CACHE_bytes"] = total_size
+            # Copy items to avoid mutation during iteration
+            try:
+                items = list(apiserver.BLOCK_CACHE.items())
+                for key, value in items:
+                    total_size += sys.getsizeof(key) + sys.getsizeof(value)
+                sizes["BLOCK_CACHE_bytes"] = total_size
+            except RuntimeError:
+                # Cache was modified during iteration, skip size calculation
+                sizes["BLOCK_CACHE_bytes"] = "skipped"
     except ImportError:
         pass
 
