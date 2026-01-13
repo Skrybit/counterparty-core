@@ -1,11 +1,13 @@
 import datetime
 import json
 import os
+import re
 import sys
 
 import requests
 import sh
 import yaml
+from counterparty_rs import utils as rs_utils
 from counterpartycore.lib.api import routes
 from counterpartycore.lib.api.composer import DEPRECATED_CONSTRUCT_PARAMS
 from counterpartycore.lib.utils import database
@@ -620,6 +622,52 @@ def generate_regtest_fixtures(db):
     regtest_fixtures["$LAST_MEMPOOL_TX_HASH"] = row["tx_hash"]
 
     return regtest_fixtures
+
+
+def regtest_to_mainnet_address(address: str) -> str:
+    """Convert a regtest address to its mainnet equivalent."""
+    try:
+        # Pack the address with regtest network (network-neutral internal format)
+        packed = rs_utils.pack_address(address, "regtest")
+        # Unpack to mainnet
+        return rs_utils.unpack_address(packed, "mainnet")
+    except Exception:  # pylint: disable=broad-except
+        return address  # Return as-is if not convertible
+
+
+def convert_apiary_to_mainnet(filepath: str = None):
+    """Replace all regtest addresses with their mainnet equivalents in apiary.apib."""
+    if filepath is None:
+        filepath = API_BLUEPRINT_FILE
+
+    print(f"Converting regtest addresses to mainnet in {filepath}...")
+
+    with open(filepath, "r") as f:
+        content = f.read()
+
+    # Patterns for different types of regtest addresses
+    # bech32/bech32m regtest (bcrt1...)
+    bech32_pattern = r"bcrt1[a-zA-HJ-NP-Z0-9]{39,59}"
+    # P2PKH legacy testnet/regtest (m... or n...)
+    p2pkh_pattern = r"\b[mn][a-km-zA-HJ-NP-Z1-9]{25,34}\b"
+    # P2SH legacy testnet/regtest (2...)
+    p2sh_pattern = r"\b2[a-km-zA-HJ-NP-Z1-9]{25,34}\b"
+
+    all_patterns = [bech32_pattern, p2pkh_pattern, p2sh_pattern]
+    converted_count = 0
+
+    for pattern in all_patterns:
+        addresses = set(re.findall(pattern, content))
+        for addr in addresses:
+            mainnet_addr = regtest_to_mainnet_address(addr)
+            if mainnet_addr != addr:
+                content = content.replace(addr, mainnet_addr)
+                converted_count += 1
+
+    with open(filepath, "w") as f:
+        f.write(content)
+
+    print(f"Converted {converted_count} unique addresses to mainnet format.")
 
 
 if __name__ == "__main__":

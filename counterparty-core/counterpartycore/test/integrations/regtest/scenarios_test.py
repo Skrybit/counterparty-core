@@ -8,6 +8,7 @@ import time
 
 import sh
 from counterpartycore.lib.exceptions import ComposeError
+from genapidoc import convert_apiary_to_mainnet
 from regtestcli import atomic_swap
 from regtestnode import RegtestNodeThread, print_server_output
 from scenarios import (
@@ -439,6 +440,8 @@ def run_scenarios(serve=False, wsgi_server="gunicorn"):
                 _out=sys.stdout,
                 _err_to_out=True,
             )
+            print("Converting API doc addresses to mainnet...")
+            convert_apiary_to_mainnet()
             print("Testing invalid detach...")
             regtest_node_thread.node.test_invalid_detach()
             print("Testing transaction chaining...")
