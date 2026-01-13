@@ -182,6 +182,15 @@ def prepare_url(route, MainnetFixtures):
     if route in ["/v2/bitcoin/transactions", "/", "/v1/", "/api/", "/rpc/"]:
         return None
 
+    # exclude endpoints that call the Bitcoin backend (to avoid rate limiting issues)
+    # TODO: re-enable these endpoints when rate limiting is resolved
+    if "/compose/" in route:
+        return None
+    if "/bitcoin/" in route:
+        return None
+    if route in ["/v2/transactions/<tx_hash>/info", "/v2/transactions/info"]:
+        return None
+
     url = route.replace("<int:block_index>", str(MainnetFixtures.last_tx["block_index"]))
     url = url.replace("<block_hash>", MainnetFixtures.last_block["block_hash"])
     url = url.replace("<order_hash>", MainnetFixtures.last_order["tx_hash"])

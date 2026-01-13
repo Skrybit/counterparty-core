@@ -1887,7 +1887,7 @@ def get_sweeps_by_address(
 def get_address_balances(
     state_db,
     address: str,
-    type: BalanceType = "all",
+    type: BalanceType = "all",  # pylint: disable=W0622
     cursor: int = None,
     limit: int = 100,
     offset: int = None,
