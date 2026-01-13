@@ -4,6 +4,7 @@ import decimal
 import logging
 import multiprocessing
 import os
+import signal
 import threading
 import time
 
@@ -232,13 +233,18 @@ class CounterpartyServer(threading.Thread):
 
 def start_all(args, log_stream=None, stop_when_ready=False):
     server = CounterpartyServer(args, log_stream, stop_when_ready=stop_when_ready)
+    shutdown_event = threading.Event()
+
+    def handle_sigterm(signum, frame):
+        logger.warning("SIGTERM received. Shutting down...")
+        shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
     try:
         server.start()
-        while True:
-            if not server.stopped:
-                server.join(1)
-            else:
-                break
+        while not shutdown_event.is_set() and not server.stopped:
+            server.join(1)
     except KeyboardInterrupt:
         logger.warning("Interruption received. Shutting down...")
     finally:
