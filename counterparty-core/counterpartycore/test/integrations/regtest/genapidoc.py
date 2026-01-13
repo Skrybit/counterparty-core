@@ -237,8 +237,9 @@ def gen_blueprint(db):
         for arg in route["args"]:
             if f"{{{arg['name']}}}" in blueprint_path:
                 continue
-            else:
-                query_params.append(arg["name"])
+            if arg["name"] in DEPRECATED_CONSTRUCT_PARAMS:
+                continue
+            query_params.append(arg["name"])
         blueprint_path += f"{{?{','.join(query_params)}}}" if query_params else ""
         md += f"[GET {blueprint_path}]\n\n"
 
