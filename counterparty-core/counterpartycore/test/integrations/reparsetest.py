@@ -7,6 +7,8 @@ This module supports caching to speed up repeated test runs:
 """
 
 import os
+import signal
+import subprocess
 import sys
 import time
 
@@ -28,7 +30,7 @@ def prepare(network, use_existing_data=False):
         use_existing_data: If True, don't clear the data directory
 
     Returns:
-        Tuple of (sh_counterparty_server, db_file, api_url)
+        Tuple of (sh_counterparty_server, server_args, db_file, api_url)
     """
     if not use_existing_data:
         if os.path.exists(DATA_DIR):
@@ -41,7 +43,6 @@ def prepare(network, use_existing_data=False):
         "--cache-dir",
         DATA_DIR,
         "--no-confirm",
-        "--backend-ssl",
     ]
     if network == "testnet4":
         args += [
@@ -50,6 +51,7 @@ def prepare(network, use_existing_data=False):
             "testnet4.counterparty.io",
             "--backend-port",
             "48332",
+            "--backend-ssl",
             "--profile",
         ]
         db_file = "counterparty.testnet4.db"
@@ -61,19 +63,33 @@ def prepare(network, use_existing_data=False):
             "signet.counterparty.io",
             "--backend-port",
             "38332",
+            "--backend-ssl",
+            # For local Bitcoin node, uncomment the following and comment out the above:
+            # "--backend-connect",
+            # "localhost",
+            # "--backend-user",
+            # "rpc",
+            # "--backend-password",
+            # "rpc",
             "--profile",
         ]
         db_file = "counterparty.signet.db"
         api_url = "http://localhost:34000/v2/"
     else:
-        args += ["--backend-connect", "api.counterparty.io", "--backend-port", "8332"]
+        args += [
+            "--backend-connect",
+            "api.counterparty.io",
+            "--backend-port",
+            "8332",
+            "--backend-ssl",
+        ]
         db_file = "counterparty.db"
         api_url = "http://localhost:4000/v2/"
 
     db_path = os.path.join(DATA_DIR, db_file)
     sh_counterparty_server = sh.counterparty_server.bake(*args, _out=sys.stdout, _err_to_out=True)
 
-    return sh_counterparty_server, db_path, api_url
+    return sh_counterparty_server, args, db_path, api_url
 
 
 def bootstrap(sh_counterparty_server, network="testnet4"):
@@ -132,12 +148,12 @@ def rollback(sh_counterparty_server, block_index):
     sh_counterparty_server("rollback", block_index)
 
 
-def catchup(sh_counterparty_server, api_url, timeout_minutes=20):
+def catchup(server_args, api_url, timeout_minutes=20):
     """
     Start the server and wait for it to catch up to the chain tip.
 
     Args:
-        sh_counterparty_server: The sh command wrapper
+        server_args: List of arguments for the counterparty-server command
         api_url: The API URL to check for readiness
         timeout_minutes: Maximum time to wait for catchup
 
@@ -145,10 +161,13 @@ def catchup(sh_counterparty_server, api_url, timeout_minutes=20):
         Exception: If the server doesn't become ready within the timeout
     """
     print("Starting server for catchup...")
-    server_process = None
-    try:
-        server_process = sh_counterparty_server("start", _bg=True)
+    cmd = ["counterparty-server"] + server_args + ["start"]
+    # Start in a new process group so we can kill all child processes
+    server_process = subprocess.Popen(  # noqa: S603
+        cmd, stdout=sys.stdout, stderr=subprocess.STDOUT, start_new_session=True
+    )
 
+    try:
         server_ready = False
         start_time = time.time()
         error = None
@@ -170,8 +189,18 @@ def catchup(sh_counterparty_server, api_url, timeout_minutes=20):
 
         print("Server is ready!")
     finally:
-        if server_process:
-            server_process.terminate()
+        print("Stopping server...")
+        pgid = os.getpgid(server_process.pid)
+        # Send SIGTERM to the entire process group
+        os.killpg(pgid, signal.SIGTERM)
+        try:
+            server_process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            print("Server did not stop gracefully, killing process group...")
+            # Send SIGKILL to the entire process group
+            os.killpg(pgid, signal.SIGKILL)
+            server_process.wait()
+        print("Server stopped.")
 
 
 def cleanup():
@@ -216,11 +245,11 @@ def _run_with_cache(network):
     expected_hashes = cache_data["hashes"]
 
     # Prepare the server command (don't clear data dir)
-    sh_counterparty_server, db_path, api_url = prepare(network, use_existing_data=True)
+    sh_counterparty_server, server_args, db_path, api_url = prepare(network, use_existing_data=True)
 
     # First catchup - bring DB up to current chain tip
     print("Catching up to chain tip...")
-    catchup(sh_counterparty_server, api_url)
+    catchup(server_args, api_url)
 
     # Get rollback target (first block in cached hashes)
     rollback_block = cache_manager.get_rollback_block_index(expected_hashes)
@@ -230,7 +259,7 @@ def _run_with_cache(network):
 
     # Catchup again - this should re-parse all the cached blocks
     print("Catching up and verifying hashes...")
-    catchup(sh_counterparty_server, api_url)
+    catchup(server_args, api_url)
 
     # Verify all hashes match
     cache_manager.verify_hashes(db_path, expected_hashes)
@@ -247,13 +276,13 @@ def _run_with_cache(network):
 def _run_without_cache(network):
     """Run the test without cache (first run or after cache clear)."""
     # Prepare the server command
-    sh_counterparty_server, db_path, api_url = prepare(network)
+    sh_counterparty_server, server_args, db_path, api_url = prepare(network)
 
     # Bootstrap from GCS
     bootstrap(sh_counterparty_server, network)
 
     # Catchup to chain tip
-    catchup(sh_counterparty_server, api_url)
+    catchup(server_args, api_url)
 
     # Save cache for next run
     print("Saving cache for future runs...")

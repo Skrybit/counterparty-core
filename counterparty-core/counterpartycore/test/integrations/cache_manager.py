@@ -173,6 +173,13 @@ def save_db_to_cache(network, source_db_path):
     print(f"Saved database to cache: {cached_db_path}")
 
 
+def get_state_db_filename(network):
+    """Get the state database filename for a network."""
+    if network == "mainnet":
+        return "state.db"
+    return f"state.{network}.db"
+
+
 def restore_db_from_cache(network, target_dir):
     """
     Restore the database from cache to the target directory.
@@ -189,6 +196,22 @@ def restore_db_from_cache(network, target_dir):
         raise FileNotFoundError(f"No cached database found for {network}")
 
     os.makedirs(target_dir, exist_ok=True)
+
+    # Delete the state database files (they may be corrupted from previous SIGKILL)
+    state_db_filename = get_state_db_filename(network)
+    state_db_path = os.path.join(target_dir, state_db_filename)
+    for suffix in ["", "-wal", "-shm", "-journal"]:
+        state_file = state_db_path + suffix
+        if os.path.exists(state_file):
+            os.remove(state_file)
+            print(f"Removed stale state database file: {state_file}")
+
+    # Delete the fetcher database (may also be corrupted)
+    fetcher_db_name = f"fetcherdb.{network}" if network != "mainnet" else "fetcherdb"
+    fetcher_db_path = os.path.join(target_dir, fetcher_db_name)
+    if os.path.exists(fetcher_db_path):
+        shutil.rmtree(fetcher_db_path)
+        print(f"Removed stale fetcher database: {fetcher_db_path}")
 
     db_filename = get_db_filename(network)
     target_db_path = os.path.join(target_dir, db_filename)
