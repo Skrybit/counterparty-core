@@ -646,7 +646,7 @@ def test_stop_resets_instance_attributes(rsfetcher_instance):
     # Verify the methods were called
     fetcher_mock.stop.assert_called_once()
     prefetch_task_mock.result.assert_called_once_with(timeout=10)
-    executor_mock.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+    executor_mock.shutdown.assert_called_once_with(wait=True, cancel_futures=True)
 
 
 def test_stop_no_wait_skips_waiting(rsfetcher_instance):
@@ -659,7 +659,7 @@ def test_stop_no_wait_skips_waiting(rsfetcher_instance):
 
     rsfetcher_instance.stop(no_wait=True)
 
-    executor_mock.shutdown.assert_called_once_with(wait=False)
+    executor_mock.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
     fetcher_mock.stop.assert_called_once()
     assert rsfetcher_instance.executor is None
 
