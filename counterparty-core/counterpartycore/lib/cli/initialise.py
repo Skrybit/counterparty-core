@@ -130,9 +130,6 @@ def initialise_config(
     zmq_publisher_port=None,
     db_connection_pool_size=config.DEFAULT_DB_CONNECTION_POOL_SIZE,
     db_max_connections=config.DEFAULT_DB_MAX_CONNECTIONS,
-    db_cache_size=config.DEFAULT_DB_CACHE_SIZE,
-    db_mmap_size=config.DEFAULT_DB_MMAP_SIZE,
-    not_supported_tx_cache_max_size=config.DEFAULT_NOT_SUPPORTED_TX_CACHE_MAX_SIZE,
     wsgi_server=None,
     waitress_threads=None,
     gunicorn_workers=None,
@@ -529,9 +526,6 @@ def initialise_config(
 
     config.DB_CONNECTION_POOL_SIZE = db_connection_pool_size
     config.DB_MAX_CONNECTIONS = db_max_connections
-    config.DB_CACHE_SIZE = db_cache_size
-    config.DB_MMAP_SIZE = db_mmap_size
-    config.NOT_SUPPORTED_TX_CACHE_MAX_SIZE = not_supported_tx_cache_max_size
     config.WSGI_SERVER = wsgi_server
     config.WAITRESS_THREADS = waitress_threads
     config.GUNICORN_THREADS_PER_WORKER = gunicorn_threads_per_worker
@@ -599,9 +593,6 @@ def initialise_log_and_config(args, api=False, log_stream=None):
         "zmq_publisher_port": args.zmq_publisher_port,
         "db_connection_pool_size": args.db_connection_pool_size,
         "db_max_connections": args.db_max_connections,
-        "db_cache_size": args.db_cache_size,
-        "db_mmap_size": args.db_mmap_size,
-        "not_supported_tx_cache_max_size": args.not_supported_tx_cache_max_size,
         "wsgi_server": args.wsgi_server,
         "waitress_threads": args.waitress_threads,
         "gunicorn_workers": args.gunicorn_workers,

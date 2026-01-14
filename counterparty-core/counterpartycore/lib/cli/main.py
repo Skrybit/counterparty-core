@@ -335,35 +335,11 @@ CONFIG_ARGS = [
         },
     ],
     [
-        ("--db-cache-size",),
-        {
-            "type": int,
-            "default": config.DEFAULT_DB_CACHE_SIZE,
-            "help": "SQLite page cache size (negative value = KB, e.g. -262144 = 256MB)",
-        },
-    ],
-    [
-        ("--db-mmap-size",),
-        {
-            "type": int,
-            "default": config.DEFAULT_DB_MMAP_SIZE,
-            "help": "SQLite memory-mapped I/O size in bytes per connection (0 = disabled)",
-        },
-    ],
-    [
         ("--db-max-connections",),
         {
             "type": int,
             "default": config.DEFAULT_DB_MAX_CONNECTIONS,
             "help": "Maximum total database connections across all threads (0 = unlimited)",
-        },
-    ],
-    [
-        ("--not-supported-tx-cache-max-size",),
-        {
-            "type": int,
-            "default": config.DEFAULT_NOT_SUPPORTED_TX_CACHE_MAX_SIZE,
-            "help": "Maximum entries in the not-supported transactions cache",
         },
     ],
     [

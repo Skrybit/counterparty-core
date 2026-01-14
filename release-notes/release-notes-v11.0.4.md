@@ -52,17 +52,10 @@ counterparty-server start
 
 ## Performance & Memory
 
-- Add bounded LRU cache for NotSupportedTransactionsCache to prevent unbounded memory growth
 - Add configurable database connection pool limits (`--db-connection-pool-size`, `--db-max-connections`)
-- Set SQLite mmap_size default to 64MB per connection (configurable via `--db-mmap-size`)
-- Add periodic garbage collection to reduce memory fragmentation (every 100k API requests)
 - Convert NotSupportedTransactionsCache from O(n) list to O(1) set for faster lookups
-- Add configurable cache size limit: `--not-supported-tx-cache-max-size`
 - Add memory profiler for monitoring cache sizes and process memory (`--memory-profile`)
-- AssetCache loads all assets at startup (~70MB for 246k assets)
-- UTXOBalancesCache uses unbounded dict (~350k entries, 47MB) - size bounded by blockchain UTXO set, not runtime
-- Fix: DB config params now properly passed to API subprocess (fixed connection pool contention)
-- Add connection pool instrumentation (POOL_STATS logging every 60s)
+- Add connection pool instrumentation (POOL_STATS logging every 60s with peak tracking and contention warnings)
 
 ## API
 
@@ -74,10 +67,7 @@ counterparty-server start
 
 - Add `--db-connection-pool-size` to configure connection pool size (default: 10)
 - Add `--db-max-connections` to limit total database connections across threads (default: 50, 0=unlimited)
-- Add `--db-cache-size` to configure SQLite cache_size pragma (default: -262144 = 256MB)
-- Add `--db-mmap-size` to configure SQLite mmap_size pragma (default: 67108864 = 64MB)
-- Add `--not-supported-tx-cache-max-size` for cache limit (default: 200k)
-- Add `--memory-profile` to enable periodic memory usage logging (lightweight, no tracemalloc)
+- Add `--memory-profile` to enable periodic memory usage logging
 
 # Credits
 

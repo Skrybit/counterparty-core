@@ -90,12 +90,6 @@ def get_db_connection(db_file, read_only=True, check_wal=False):
     cursor.execute("PRAGMA foreign_keys = ON")
     cursor.execute("PRAGMA defer_foreign_keys = ON")
 
-    # Performance tuning: configurable cache and memory-mapped I/O
-    if hasattr(config, "DB_CACHE_SIZE"):
-        cursor.execute(f"PRAGMA cache_size = {config.DB_CACHE_SIZE}")
-    if hasattr(config, "DB_MMAP_SIZE"):
-        cursor.execute(f"PRAGMA mmap_size = {config.DB_MMAP_SIZE}")
-
     db.setrowtrace(rowtracer)
 
     cursor.close()

@@ -295,15 +295,6 @@ DEFAULT_DB_CONNECTION_POOL_SIZE = 10
 # Maximum total connections across all threads (0 = unlimited)
 DEFAULT_DB_MAX_CONNECTIONS = 50
 
-# SQLite performance tuning defaults
-# cache_size: negative value = KB, so -262144 = 256MB (default SQLite is ~2MB)
-DEFAULT_DB_CACHE_SIZE = -262144  # 256MB
-# mmap_size: bytes to memory-map per connection
-DEFAULT_DB_MMAP_SIZE = 67108864  # 64MB
-
-# Cache size limits to prevent unbounded memory growth
-DEFAULT_NOT_SUPPORTED_TX_CACHE_MAX_SIZE = 200_000
-
 DEFAULT_UTXO_VALUE = 546
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))

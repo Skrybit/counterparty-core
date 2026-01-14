@@ -398,12 +398,6 @@ class RawMempoolParser(threading.Thread):
 
 class NotSupportedTransactionsCache(metaclass=helpers.SingletonMeta):
     def __init__(self):
-        # Max size from config (prevents unbounded memory growth)
-        self.max_size = getattr(
-            config,
-            "NOT_SUPPORTED_TX_CACHE_MAX_SIZE",
-            config.DEFAULT_NOT_SUPPORTED_TX_CACHE_MAX_SIZE,
-        )
         # Use set for O(1) lookups instead of O(n) list
         self.not_suppported_txs = set()
         # Keep a list for ordering (for backup/restore)
@@ -423,10 +417,6 @@ class NotSupportedTransactionsCache(metaclass=helpers.SingletonMeta):
             )
 
     def backup(self):
-        # Only keep last max_size txs
-        if len(self._ordered_txs) > self.max_size:
-            self._ordered_txs = self._ordered_txs[-self.max_size :]
-            self.not_suppported_txs = set(self._ordered_txs)
         with open(self.cache_path, "w", encoding="utf-8") as f:
             f.write("\n".join(self._ordered_txs))
         logger.trace(
