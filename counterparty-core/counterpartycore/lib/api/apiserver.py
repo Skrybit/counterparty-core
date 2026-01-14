@@ -50,17 +50,22 @@ def verify_password(username, password):
 
 
 def is_server_ready():
-    if CurrentState().current_backend_height() is None:
+    backend_height = CurrentState().current_backend_height()
+    block_index = CurrentState().current_block_index()
+
+    if backend_height is None:
         return False
-    if CurrentState().current_block_index() in [
-        CurrentState().current_backend_height(),
-        CurrentState().current_backend_height() - 1,
-    ]:
+
+    # Server is ready if within 1 block of backend height OR ahead of it
+    # (backend height might be stale due to rate limiting)
+    if block_index is not None and block_index >= backend_height - 1:
         return True
-    if CurrentState().current_block_time() is None:
-        return False
-    if time.time() - CurrentState().current_block_time() < 60:
+
+    # Also ready if the last block was parsed recently (handles slow block times)
+    block_time = CurrentState().current_block_time()
+    if block_time is not None and time.time() - block_time < 120:
         return True
+
     return False
 
 
@@ -68,14 +73,8 @@ def api_root():
     with StateDBConnectionPool().connection() as state_db:
         counterparty_height = apiwatcher.get_last_block_parsed(state_db)
 
-    backend_height = CurrentState().current_backend_height()
-    if backend_height is None:
-        server_ready = config.FORCE
-    else:
-        server_ready = counterparty_height >= backend_height
-
     return {
-        "server_ready": server_ready,
+        "server_ready": is_server_ready(),
         "network": config.NETWORK_NAME,
         "version": config.VERSION_STRING,
         "backend_height": CurrentState().current_backend_height(),
@@ -535,6 +534,11 @@ def run_apiserver(
         app = init_flask_app()
         app.shared_backend_height = shared_backend_height
 
+        # Set backend height value BEFORE creating the WSGI server
+        # The WSGI server starts listening as soon as it's created,
+        # so the value must be set before any requests can come in
+        CurrentState().set_backend_height_value(shared_backend_height)
+
         try:
             wsgi_server = wsgi.WSGIApplication(app, args=args)
         except OSError as e:
@@ -546,11 +550,6 @@ def run_apiserver(
         parent_checker.start()
 
         app.app_context().push()
-
-        # Set backend height value BEFORE signaling that the API is ready
-        # to avoid race condition where requests come in before the value is set
-        CurrentState().set_backend_height_value(shared_backend_height)
-
         server_ready_value.value = 1
 
         wsgi_server.run(server_ready_value, shared_backend_height)
