@@ -444,9 +444,9 @@ def init_flask_app():
     @app.before_request
     def periodic_gc():
         init_flask_app.request_count += 1
-        # Trigger GC every 100,000 requests to reduce memory fragmentation
+        # Trigger GC every 10,000,000 requests to reduce memory fragmentation
         # without adding overhead on every request
-        if init_flask_app.request_count % 100_000 == 0:
+        if init_flask_app.request_count % 10_000_000 == 0:
             collected = gc.collect()
             logger.debug(
                 "Periodic GC triggered after %d requests: collected %d objects",
