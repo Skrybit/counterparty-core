@@ -546,6 +546,11 @@ def run_apiserver(
         parent_checker.start()
 
         app.app_context().push()
+
+        # Set backend height value BEFORE signaling that the API is ready
+        # to avoid race condition where requests come in before the value is set
+        CurrentState().set_backend_height_value(shared_backend_height)
+
         server_ready_value.value = 1
 
         wsgi_server.run(server_ready_value, shared_backend_height)
