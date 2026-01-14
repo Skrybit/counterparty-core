@@ -330,8 +330,16 @@ CONFIG_ARGS = [
         ("--db-connection-pool-size",),
         {
             "type": int,
-            "default": 20,
-            "help": "size of the database connection pool",
+            "default": config.DEFAULT_DB_CONNECTION_POOL_SIZE,
+            "help": "size of the database connection pool per thread",
+        },
+    ],
+    [
+        ("--db-max-connections",),
+        {
+            "type": int,
+            "default": config.DEFAULT_DB_MAX_CONNECTIONS,
+            "help": "Maximum total database connections across all threads (0 = unlimited)",
         },
     ],
     [
@@ -421,6 +429,14 @@ CONFIG_ARGS = [
             "action": "store_true",
             "default": False,
             "help": "Enable cProfile profiling for catchup; dumps output to a file in the cache dir",
+        },
+    ],
+    [
+        ("--memory-profile",),
+        {
+            "action": "store_true",
+            "default": False,
+            "help": "Enable memory profiling; logs memory usage and cache sizes periodically",
         },
     ],
     [

@@ -292,6 +292,8 @@ INFLUX_DB_BUCKET = "node-telemetry"
 LOG_IN_CONSOLE = False
 
 DEFAULT_DB_CONNECTION_POOL_SIZE = 10
+# Maximum total connections across all threads (0 = unlimited)
+DEFAULT_DB_MAX_CONNECTIONS = 50
 
 DEFAULT_UTXO_VALUE = 546
 

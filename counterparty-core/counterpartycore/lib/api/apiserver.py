@@ -19,12 +19,12 @@ from sentry_sdk import configure_scope as configure_sentry_scope
 from sentry_sdk import start_span as start_sentry_span
 
 from counterpartycore.lib import config, exceptions
-from counterpartycore.lib.api import apiwatcher, caches, dbbuilder, queries, verbose, wsgi
+from counterpartycore.lib.api import apiwatcher, dbbuilder, healthz, queries, verbose, wsgi
 from counterpartycore.lib.api.routes import ROUTES, function_needs_db
 from counterpartycore.lib.cli.initialise import initialise_log_and_config
 from counterpartycore.lib.cli.log import init_api_access_log
 from counterpartycore.lib.ledger.currentstate import CurrentState
-from counterpartycore.lib.monitors import sentry
+from counterpartycore.lib.monitors import memory_profiler, sentry
 from counterpartycore.lib.parser import check
 from counterpartycore.lib.utils import address, database, helpers
 from counterpartycore.lib.utils.database import LedgerDBConnectionPool, StateDBConnectionPool
@@ -433,6 +433,7 @@ def handle_options():
 
 def init_flask_app():
     app = Flask(config.APP_NAME)
+
     with app.app_context():
         # Initialise the API access log
         init_api_access_log(app)
@@ -453,6 +454,13 @@ def init_flask_app():
             "/v2/blueprint",
             view_func=handle_doc,
             methods=methods,
+            strict_slashes=False,
+            provide_automatic_options=False,
+        )
+        app.add_url_rule(
+            "/rate-limited",
+            view_func=healthz.rate_limited,
+            methods=["GET", "POST", "OPTIONS"],
             strict_slashes=False,
             provide_automatic_options=False,
         )
@@ -488,6 +496,39 @@ def check_database_version(state_db):
     check.check_database_version(state_db, execute_upgrade_actions, "State")
 
 
+class ConnectionPoolMonitor(threading.Thread):
+    """Monitor connection pool statistics and log periodically."""
+
+    def __init__(self, stop_event, interval_seconds=60):
+        super().__init__(name="ConnectionPoolMonitor", daemon=True)
+        self.stop_event = stop_event
+        self.interval = interval_seconds
+
+    def run(self):
+        while not self.stop_event.is_set():
+            self.stop_event.wait(self.interval)
+            if self.stop_event.is_set():
+                break
+
+            try:
+                ledger_stats = LedgerDBConnectionPool().get_stats()
+                state_stats = StateDBConnectionPool().get_stats()
+
+                logger.info(
+                    "POOL_STATS ledger=%d/%d (%.0f%%, peak=%d) state=%d/%d (%.0f%%, peak=%d)",
+                    ledger_stats["current"],
+                    ledger_stats["max"],
+                    ledger_stats["utilization"],
+                    ledger_stats["peak"],
+                    state_stats["current"],
+                    state_stats["max"],
+                    state_stats["utilization"],
+                    state_stats["peak"],
+                )
+            except Exception as e:  # noqa: E722 # pylint: disable=broad-exception-caught
+                logger.error("Error logging pool stats: %s", e)
+
+
 def run_apiserver(
     args, server_ready_value, stop_event, shared_backend_height, parent_pid, log_stream
 ):
@@ -499,6 +540,8 @@ def run_apiserver(
     wsgi_server = None
     parent_checker = None
     watcher = None
+    mem_profiler = None
+    pool_monitor = None
 
     try:
         # Set signal handlers for graceful shutdown
@@ -508,6 +551,18 @@ def run_apiserver(
         # Initialize Sentry, logging, config, etc.
         sentry.init()
         initialise_log_and_config(argparse.Namespace(**args), api=True, log_stream=log_stream)
+
+        # Start memory profiler if enabled via --memory-profile flag
+        if getattr(config, "MEMORY_PROFILE", False):
+            mem_profiler = memory_profiler.start_memory_profiler(
+                interval_seconds=60,
+                enable_tracemalloc=False,
+            )
+
+        # Start connection pool monitor
+        logger.info("Starting Connection Pool Monitor thread...")
+        pool_monitor = ConnectionPoolMonitor(stop_event, interval_seconds=60)
+        pool_monitor.start()
 
         if args["rebuild_state_db"]:
             dbbuilder.build_state_db()
@@ -524,9 +579,6 @@ def run_apiserver(
             config.STATE_DATABASE, read_only=False, check_wal=False
         )
         check_database_version(state_db)
-
-        # Initialize caches
-        caches.AddressEventsCache()
 
         watcher = apiwatcher.APIWatcher(state_db)
         watcher.start()
@@ -568,6 +620,10 @@ def run_apiserver(
         if watcher is not None:
             watcher.stop()
             watcher.join()
+
+        # Stop memory profiler
+        if mem_profiler is not None:
+            memory_profiler.stop_memory_profiler()
 
         logger.info("API Server stopped.")
         server_ready_value.value = 2

@@ -67,7 +67,8 @@ def test_argparser():
         "no_telemetry": True,
         "enable_zmq_publisher": False,
         "zmq_publisher_port": None,
-        "db_connection_pool_size": 20,
+        "db_connection_pool_size": 10,
+        "db_max_connections": 50,
         "json_logs": False,
         "wsgi_server": "waitress",
         "waitress_threads": 10,
@@ -82,5 +83,6 @@ def test_argparser():
         "catch_up": "normal",
         "api_only": False,
         "profile": False,
+        "memory_profile": False,
         "enable_all_protocol_changes": False,
     }

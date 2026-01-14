@@ -4,7 +4,7 @@ import threading
 import time
 
 from counterpartycore.lib import config, exceptions
-from counterpartycore.lib.api import caches, dbbuilder
+from counterpartycore.lib.api import dbbuilder
 from counterpartycore.lib.parser import utxosinfo
 from counterpartycore.lib.utils import database
 from counterpartycore.lib.utils.helpers import format_duration
@@ -223,8 +223,8 @@ def update_address_events(state_db, event, no_cache=False):
             continue
         address = event_bindings[field]
         sql = """
-            INSERT INTO address_events (address, event_index, block_index)
-            VALUES (:address, :event_index, :block_index)
+            INSERT INTO address_events (address, event_index, block_index, event)
+            VALUES (:address, :event_index, :block_index, :event)
             """
         cursor.execute(
             sql,
@@ -232,10 +232,9 @@ def update_address_events(state_db, event, no_cache=False):
                 "address": address,
                 "event_index": event["message_index"],
                 "block_index": event["block_index"],
+                "event": event["event"],
             },
         )
-        if not no_cache:
-            caches.AddressEventsCache().insert(address, event["event"], event["message_index"])
         if utxosinfo.is_utxo_format(address):
             utxo_address = search_address_from_utxo(state_db, address)
             if utxo_address is not None:
@@ -245,12 +244,9 @@ def update_address_events(state_db, event, no_cache=False):
                         "address": utxo_address,
                         "event_index": event["message_index"],
                         "block_index": event["block_index"],
+                        "event": event["event"],
                     },
                 )
-                if not no_cache:
-                    caches.AddressEventsCache().insert(
-                        utxo_address, event["event"], event["message_index"]
-                    )
 
 
 def update_all_expiration(state_db, event):

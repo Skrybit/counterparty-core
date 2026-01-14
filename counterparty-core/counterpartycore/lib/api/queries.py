@@ -6,7 +6,6 @@ from typing import Literal
 
 from sentry_sdk import start_span as start_sentry_span
 
-from counterpartycore.lib.api import caches
 from counterpartycore.lib.utils.helpers import divide
 
 OrderStatus = Literal["all", "open", "expired", "filled", "cancelled"]
@@ -215,6 +214,9 @@ def select_rows(
                 where_field.append(f"{key[:-9]} IS NOT NULL")
             elif key.endswith("__null"):
                 where_field.append(f"{key[:-6]} IS NULL")
+            elif key.endswith("__nocase"):
+                where_field.append(f"{key[:-8]} = ? COLLATE NOCASE")
+                bindings.append(value)
             else:
                 if key in ADDRESS_FIELDS and len(value.split(",")) > 1:
                     where_field.append(f"{key} IN ({','.join(['?'] * len(value.split(',')))})")
@@ -871,6 +873,7 @@ def get_events_by_name(
 
 def get_events_by_addresses(
     ledger_db,
+    state_db,
     addresses: str,
     event_name: str = None,
     cursor: int = None,
@@ -889,7 +892,7 @@ def get_events_by_addresses(
     if event_name:
         where[0]["event__in"] = event_name.split(",")
     events = select_rows(
-        caches.AddressEventsCache().cache_db,
+        state_db,
         "address_events",
         where=where,
         cursor_field="event_index",
@@ -1575,7 +1578,7 @@ def get_issuances_by_asset(
     where = prepare_issuance_where(
         asset_events, {"asset": asset.upper(), "status": "valid"}
     ) + prepare_issuance_where(
-        asset_events, {"UPPER(asset_longname)": asset.upper(), "status": "valid"}
+        asset_events, {"asset_longname__nocase": asset.upper(), "status": "valid"}
     )
     return select_rows(
         ledger_db,
@@ -2582,7 +2585,7 @@ def get_asset(state_db, asset: str):
     Returns an asset by its name
     :param str asset: The name of the asset to return (e.g. $ASSET_1)
     """
-    where = [{"asset": asset.upper()}, {"UPPER(asset_longname)": asset.upper()}]
+    where = [{"asset": asset.upper()}, {"asset_longname__nocase": asset.upper()}]
     return select_row(
         state_db,
         "assets_info",
