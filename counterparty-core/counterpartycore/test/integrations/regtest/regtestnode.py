@@ -525,6 +525,7 @@ class RegtestNode:
             _out=self.server_out,
             _err_to_out=True,
             _bg_exc=False,
+            _new_session=True,  # Create new process group for clean shutdown
         )
         self.wait_for_counterparty_follower()
 
@@ -567,9 +568,32 @@ class RegtestNode:
 
     def stop_counterparty_server(self):
         try:
-            self.counterparty_server_process.terminate()
-            self.counterparty_server_process.wait()
-            self.kill_gunicorn_workers()
+            # Get the process group ID to kill all child processes
+            pid = self.counterparty_server_process.process.pid
+            try:
+                pgid = os.getpgid(pid)
+                # Send SIGTERM to the entire process group
+                os.killpg(pgid, signal.SIGTERM)
+            except (ProcessLookupError, OSError):
+                # Process already dead or no process group, try terminate
+                self.counterparty_server_process.terminate()
+
+            # Wait with timeout
+            try:
+                self.counterparty_server_process.wait(timeout=15)
+            except Exception:  # timeout or other error
+                print("Server did not stop gracefully, killing process group...")
+                try:
+                    pgid = os.getpgid(pid)
+                    os.killpg(pgid, signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    pass
+                # Also kill gunicorn workers as fallback
+                self.kill_gunicorn_workers()
+                try:
+                    self.counterparty_server_process.wait(timeout=5)
+                except Exception as e:  # noqa: S110
+                    print(f"Error waiting for server to stop: {e}")
         except Exception as e:  # pylint: disable=broad-except
             print(e)
             pass
@@ -612,6 +636,7 @@ class RegtestNode:
             _out=self.server_out,
             _err_to_out=True,
             _bg_exc=False,
+            _new_session=True,  # Create new process group for clean shutdown
         )
         self.wait_for_counterparty_follower()
         self.wait_for_counterparty_watcher()
