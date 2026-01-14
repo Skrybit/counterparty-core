@@ -298,12 +298,10 @@ DEFAULT_DB_MAX_CONNECTIONS = 50
 # SQLite performance tuning defaults
 # cache_size: negative value = KB, so -262144 = 256MB (default SQLite is ~2MB)
 DEFAULT_DB_CACHE_SIZE = -262144  # 256MB
-# mmap_size: bytes to memory-map per connection (0 = disabled, relies on OS page cache)
-# With 50 max connections, 64MB × 50 = 3.2GB max theoretical mmap overhead
+# mmap_size: bytes to memory-map per connection
 DEFAULT_DB_MMAP_SIZE = 67108864  # 64MB
 
 # Cache size limits to prevent unbounded memory growth
-DEFAULT_UTXO_CACHE_MAX_SIZE = 100_000
 DEFAULT_NOT_SUPPORTED_TX_CACHE_MAX_SIZE = 200_000
 
 DEFAULT_UTXO_VALUE = 546

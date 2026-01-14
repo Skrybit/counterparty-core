@@ -146,11 +146,10 @@ class CounterpartyServer(threading.Thread):
 
     def run_server(self):
         # Start memory profiler if enabled via --memory-profile flag
-        # Disable tracemalloc to avoid performance overhead - only track RSS and cache sizes
         if getattr(config, "MEMORY_PROFILE", False):
             self.mem_profiler = memory_profiler.start_memory_profiler(
-                interval_seconds=60,  # Log every minute for detailed tracking
-                enable_tracemalloc=False,  # Lightweight: no allocation tracking
+                interval_seconds=60,
+                enable_tracemalloc=False,
             )
 
         # download bootstrap if necessary

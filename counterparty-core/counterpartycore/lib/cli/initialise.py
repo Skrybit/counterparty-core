@@ -132,7 +132,6 @@ def initialise_config(
     db_max_connections=config.DEFAULT_DB_MAX_CONNECTIONS,
     db_cache_size=config.DEFAULT_DB_CACHE_SIZE,
     db_mmap_size=config.DEFAULT_DB_MMAP_SIZE,
-    utxo_cache_max_size=config.DEFAULT_UTXO_CACHE_MAX_SIZE,
     not_supported_tx_cache_max_size=config.DEFAULT_NOT_SUPPORTED_TX_CACHE_MAX_SIZE,
     wsgi_server=None,
     waitress_threads=None,
@@ -532,7 +531,6 @@ def initialise_config(
     config.DB_MAX_CONNECTIONS = db_max_connections
     config.DB_CACHE_SIZE = db_cache_size
     config.DB_MMAP_SIZE = db_mmap_size
-    config.UTXO_CACHE_MAX_SIZE = utxo_cache_max_size
     config.NOT_SUPPORTED_TX_CACHE_MAX_SIZE = not_supported_tx_cache_max_size
     config.WSGI_SERVER = wsgi_server
     config.WAITRESS_THREADS = waitress_threads
@@ -603,7 +601,6 @@ def initialise_log_and_config(args, api=False, log_stream=None):
         "db_max_connections": args.db_max_connections,
         "db_cache_size": args.db_cache_size,
         "db_mmap_size": args.db_mmap_size,
-        "utxo_cache_max_size": args.utxo_cache_max_size,
         "not_supported_tx_cache_max_size": args.not_supported_tx_cache_max_size,
         "wsgi_server": args.wsgi_server,
         "waitress_threads": args.waitress_threads,

@@ -359,14 +359,6 @@ CONFIG_ARGS = [
         },
     ],
     [
-        ("--utxo-cache-max-size",),
-        {
-            "type": int,
-            "default": config.DEFAULT_UTXO_CACHE_MAX_SIZE,
-            "help": "Maximum entries in the UTXO balances LRU cache (0 = unlimited)",
-        },
-    ],
-    [
         ("--not-supported-tx-cache-max-size",),
         {
             "type": int,

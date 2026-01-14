@@ -1,8 +1,6 @@
 import logging
 import time
 
-from cachetools import LRUCache
-
 from counterpartycore.lib import config
 from counterpartycore.lib.ledger.currentstate import CurrentState
 from counterpartycore.lib.parser.gettxinfo import KNOWN_SOURCES
@@ -120,11 +118,9 @@ class UTXOBalancesCache(metaclass=helpers.SingletonMeta):
         # Store db reference for lazy loading on cache miss
         self.db = db
         logger.debug("Initialising utxo balances cache...")
-        # Use LRU cache with bounded size (0 = unlimited)
-        max_size = getattr(config, "UTXO_CACHE_MAX_SIZE", config.DEFAULT_UTXO_CACHE_MAX_SIZE)
-        self.max_size = max_size if max_size > 0 else float("inf")
-        # Value is True if has balance, False if explicitly known to have no balance
-        self.utxos_with_balance = LRUCache(maxsize=self.max_size)
+        # Simple dict - no limit needed (UTXO set size bounded by blockchain, not runtime)
+        # Typical size: ~45k UTXOs = ~50MB, grows only with network UTXO set growth
+        self.utxos_with_balance = {}
 
         cursor = db.cursor()
 
@@ -152,8 +148,7 @@ class UTXOBalancesCache(metaclass=helpers.SingletonMeta):
         self._add_known_sources_descendants(cursor)
 
         logger.debug(
-            "UTXO balances cache initialised (max_size=%s, loaded=%d)",
-            self.max_size,
+            "UTXO balances cache initialised (loaded=%d)",
             len(self.utxos_with_balance),
         )
 
