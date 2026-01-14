@@ -89,6 +89,7 @@ class CounterpartyServer(threading.Thread):
         self.log_stream = log_stream
         self.periodic_profiler = None
         self.mem_profiler = None
+        self.pool_monitor = None
         self.stop_when_ready = stop_when_ready
         self.stopped = False
 
@@ -101,12 +102,55 @@ class CounterpartyServer(threading.Thread):
         }
         logger.debug("Config: %s", custom_config)
 
+    def _start_pool_monitor(self):
+        """Start connection pool monitor for MainProcess."""
+        from counterpartycore.lib.utils.database import (
+            LedgerDBConnectionPool,
+            StateDBConnectionPool,
+        )
+
+        class MainProcessPoolMonitor(threading.Thread):
+            def __init__(self, interval_seconds=60):
+                super().__init__(name="MainProcessPoolMonitor", daemon=True)
+                self.interval = interval_seconds
+                self.stop_event = threading.Event()
+
+            def run(self):
+                while not self.stop_event.is_set():
+                    self.stop_event.wait(self.interval)
+                    if self.stop_event.is_set():
+                        break
+                    try:
+                        ledger_stats = LedgerDBConnectionPool().get_stats()
+                        state_stats = StateDBConnectionPool().get_stats()
+                        logger.info(
+                            "MAINPROCESS_POOL ledger=%d/%d (%.0f%%, peak=%d) state=%d/%d (%.0f%%, peak=%d)",
+                            ledger_stats["current"],
+                            ledger_stats["max"],
+                            ledger_stats["utilization"],
+                            ledger_stats["peak"],
+                            state_stats["current"],
+                            state_stats["max"],
+                            state_stats["utilization"],
+                            state_stats["peak"],
+                        )
+                    except Exception as e:
+                        logger.error("Error logging MainProcess pool stats: %s", e)
+
+            def stop(self):
+                self.stop_event.set()
+
+        monitor = MainProcessPoolMonitor(interval_seconds=60)
+        monitor.start()
+        return monitor
+
     def run_server(self):
         # Start memory profiler if enabled via --memory-profile flag
+        # Disable tracemalloc to avoid performance overhead - only track RSS and cache sizes
         if getattr(config, "MEMORY_PROFILE", False):
             self.mem_profiler = memory_profiler.start_memory_profiler(
                 interval_seconds=60,  # Log every minute for detailed tracking
-                enable_tracemalloc=True,
+                enable_tracemalloc=False,  # Lightweight: no allocation tracking
             )
 
         # download bootstrap if necessary
@@ -129,6 +173,10 @@ class CounterpartyServer(threading.Thread):
         self.backend_height_thread.daemon = True
         self.backend_height_thread.start()
         CurrentState().set_backend_height_value(self.backend_height_thread.shared_backend_height)
+
+        # Start MainProcess connection pool monitor
+        logger.info("Starting MainProcess Connection Pool Monitor thread...")
+        self.pool_monitor = self._start_pool_monitor()
 
         # API Server v2
         self.api_stop_event = multiprocessing.Event()

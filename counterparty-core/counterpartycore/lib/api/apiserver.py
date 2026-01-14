@@ -573,10 +573,11 @@ def run_apiserver(
         initialise_log_and_config(argparse.Namespace(**args), api=True, log_stream=log_stream)
 
         # Start memory profiler if enabled via --memory-profile flag
+        # Disable tracemalloc to avoid performance overhead - only track RSS and cache sizes
         if getattr(config, "MEMORY_PROFILE", False):
             mem_profiler = memory_profiler.start_memory_profiler(
                 interval_seconds=60,  # Log every minute for detailed tracking
-                enable_tracemalloc=True,
+                enable_tracemalloc=False,  # Lightweight: no allocation tracking
             )
 
         # Start connection pool monitor
