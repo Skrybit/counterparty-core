@@ -1,5 +1,5 @@
 #
-# file: counterpartycore/lib/api/migrations/0012.add_performance_indexes.py
+# file: counterpartycore/lib/api/migrations/0013.add_performance_indexes.py
 #
 import logging
 import time
@@ -9,7 +9,7 @@ from yoyo import step
 
 logger = logging.getLogger(config.LOGGER_NAME)
 
-__depends__ = {"0011.create_orders_views"}
+__depends__ = {"0012.add_event_column_to_address_events"}
 
 
 def apply(db):

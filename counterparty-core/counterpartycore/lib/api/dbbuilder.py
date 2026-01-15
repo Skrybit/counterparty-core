@@ -20,6 +20,7 @@ MIGRATIONS_AFTER_ROLLBACK = [
     "0008.create_config_table",
     "0009.create_and_populate_transaction_types_count",
     "0011.create_orders_views",
+    "0013.add_performance_indexes",
 ]
 
 ROLLBACKABLE_TABLES = [
