@@ -1,3 +1,255 @@
+from counterpartycore.lib.api import dbbuilder
+
+# =============================================================================
+# Tests for migration rollback functions
+# =============================================================================
+
+
+def table_exists(db, table_name):
+    """Check if a table exists in the database."""
+    result = db.execute(
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone()
+    return result["count"] > 0
+
+
+def view_exists(db, view_name):
+    """Check if a view exists in the database."""
+    result = db.execute(
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type='view' AND name=?",
+        (view_name,),
+    ).fetchone()
+    return result["count"] > 0
+
+
+def index_exists(db, index_name):
+    """Check if an index exists in the database."""
+    result = db.execute(
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type='index' AND name=?",
+        (index_name,),
+    ).fetchone()
+    return result["count"] > 0
+
+
+def column_exists(db, table_name, column_name):
+    """Check if a column exists in a table."""
+    columns = db.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return any(col["name"] == column_name for col in columns)
+
+
+def test_migration_0001_rollback(state_db, ledger_db):
+    """Test rollback of 0001.create_and_populate_address_events migration."""
+    # Verify table exists before rollback
+    assert table_exists(state_db, "address_events")
+
+    # Rollback
+    dbbuilder.rollback_migration(state_db, "0001.create_and_populate_address_events")
+
+    # Verify table no longer exists
+    assert not table_exists(state_db, "address_events")
+
+    # Re-apply migration (ledger_db fixture ensures config.DATABASE is available)
+    dbbuilder.apply_migration(state_db, "0001.create_and_populate_address_events")
+    assert table_exists(state_db, "address_events")
+
+
+def test_migration_0002_rollback(state_db, ledger_db):
+    """Test rollback of 0002.create_and_populate_parsed_events migration."""
+    assert table_exists(state_db, "parsed_events")
+
+    dbbuilder.rollback_migration(state_db, "0002.create_and_populate_parsed_events")
+
+    assert not table_exists(state_db, "parsed_events")
+
+    # Re-apply migration (ledger_db fixture ensures config.DATABASE is available)
+    dbbuilder.apply_migration(state_db, "0002.create_and_populate_parsed_events")
+    assert table_exists(state_db, "parsed_events")
+
+
+def test_migration_0003_rollback(state_db, ledger_db):
+    """Test rollback of 0003.create_and_populate_all_expirations migration."""
+    assert table_exists(state_db, "all_expirations")
+
+    dbbuilder.rollback_migration(state_db, "0003.create_and_populate_all_expirations")
+
+    assert not table_exists(state_db, "all_expirations")
+
+    # Re-apply migration (ledger_db fixture ensures config.DATABASE is available)
+    dbbuilder.apply_migration(state_db, "0003.create_and_populate_all_expirations")
+    assert table_exists(state_db, "all_expirations")
+
+
+def test_migration_0004_rollback(state_db, ledger_db):
+    """Test rollback of 0004.create_and_populate_assets_info migration."""
+    assert table_exists(state_db, "assets_info")
+
+    dbbuilder.rollback_migration(state_db, "0004.create_and_populate_assets_info")
+
+    assert not table_exists(state_db, "assets_info")
+
+    # Re-apply migration (ledger_db fixture ensures config.DATABASE is available)
+    dbbuilder.apply_migration(state_db, "0004.create_and_populate_assets_info")
+    assert table_exists(state_db, "assets_info")
+
+
+def test_migration_0005_rollback(state_db, ledger_db):
+    """Test rollback of 0005.create_and_populate_events_count migration."""
+    assert table_exists(state_db, "events_count")
+
+    dbbuilder.rollback_migration(state_db, "0005.create_and_populate_events_count")
+
+    assert not table_exists(state_db, "events_count")
+
+    # Re-apply migration (ledger_db fixture ensures config.DATABASE is available)
+    dbbuilder.apply_migration(state_db, "0005.create_and_populate_events_count")
+    assert table_exists(state_db, "events_count")
+
+
+def test_migration_0006_rollback(state_db, ledger_db):
+    """Test rollback of 0006.create_and_populate_consolidated_tables migration."""
+    consolidated_tables = [
+        "fairminters",
+        "balances",
+        "addresses",
+        "dispensers",
+        "bet_matches",
+        "bets",
+        "order_matches",
+        "orders",
+        "rps",
+        "rps_matches",
+    ]
+
+    # Verify all tables exist before rollback
+    for table in consolidated_tables:
+        assert table_exists(state_db, table), f"Table {table} should exist before rollback"
+
+    dbbuilder.rollback_migration(state_db, "0006.create_and_populate_consolidated_tables")
+
+    # Verify all tables are removed
+    for table in consolidated_tables:
+        assert not table_exists(state_db, table), f"Table {table} should not exist after rollback"
+
+    # Re-apply migration (ledger_db fixture ensures config.DATABASE is available)
+    dbbuilder.apply_migration(state_db, "0006.create_and_populate_consolidated_tables")
+    for table in consolidated_tables:
+        assert table_exists(state_db, table), f"Table {table} should exist after re-apply"
+
+
+def test_migration_0007_rollback(state_db, ledger_db):
+    """Test rollback of 0007.create_views migration."""
+    assert view_exists(state_db, "asset_holders")
+    assert view_exists(state_db, "xcp_holders")
+
+    dbbuilder.rollback_migration(state_db, "0007.create_views")
+
+    assert not view_exists(state_db, "asset_holders")
+    assert not view_exists(state_db, "xcp_holders")
+
+    dbbuilder.apply_migration(state_db, "0007.create_views")
+    assert view_exists(state_db, "asset_holders")
+    assert view_exists(state_db, "xcp_holders")
+
+
+def test_migration_0008_rollback(state_db, ledger_db):
+    """Test rollback of 0008.create_config_table migration."""
+    assert table_exists(state_db, "config")
+
+    dbbuilder.rollback_migration(state_db, "0008.create_config_table")
+
+    assert not table_exists(state_db, "config")
+
+    dbbuilder.apply_migration(state_db, "0008.create_config_table")
+    assert table_exists(state_db, "config")
+
+
+def test_migration_0009_rollback(state_db, ledger_db):
+    """Test rollback of 0009.create_and_populate_transaction_types_count migration."""
+    assert table_exists(state_db, "transaction_types_count")
+
+    dbbuilder.rollback_migration(state_db, "0009.create_and_populate_transaction_types_count")
+
+    assert not table_exists(state_db, "transaction_types_count")
+
+    # Re-apply migration (ledger_db fixture ensures config.DATABASE is available)
+    dbbuilder.apply_migration(state_db, "0009.create_and_populate_transaction_types_count")
+    assert table_exists(state_db, "transaction_types_count")
+
+
+def test_migration_0010_rollback(state_db):
+    """Test rollback of 0010.fix_bet_match_resolution_event_name migration.
+
+    This migration's rollback does nothing (pass), so we just verify it doesn't raise.
+    """
+    # Just verify rollback doesn't raise an exception
+    dbbuilder.rollback_migration(state_db, "0010.fix_bet_match_resolution_event_name")
+    # Re-apply to restore state (this migration doesn't need ledger_db)
+    dbbuilder.apply_migration(state_db, "0010.fix_bet_match_resolution_event_name")
+
+
+def test_migration_0011_rollback(state_db):
+    """Test rollback of 0011.create_orders_views migration."""
+    assert view_exists(state_db, "orders_info")
+
+    dbbuilder.rollback_migration(state_db, "0011.create_orders_views")
+
+    assert not view_exists(state_db, "orders_info")
+
+    # This migration doesn't need ledger_db
+    dbbuilder.apply_migration(state_db, "0011.create_orders_views")
+    assert view_exists(state_db, "orders_info")
+
+
+def test_migration_0012_rollback(state_db, ledger_db):
+    """Test rollback of 0012.add_event_column_to_address_events migration.
+
+    This migration adds the 'event' column to address_events.
+    The rollback should remove the 'event' column.
+    """
+    # Verify 'event' column exists before rollback
+    assert column_exists(state_db, "address_events", "event")
+
+    dbbuilder.rollback_migration(state_db, "0012.add_event_column_to_address_events")
+
+    # Verify 'event' column no longer exists after rollback
+    assert not column_exists(state_db, "address_events", "event")
+
+    # Re-apply migration (ledger_db fixture ensures config.DATABASE is available)
+    dbbuilder.apply_migration(state_db, "0012.add_event_column_to_address_events")
+    assert column_exists(state_db, "address_events", "event")
+
+
+def test_migration_0013_rollback(state_db):
+    """Test rollback of 0013.add_performance_indexes migration."""
+    performance_indexes = [
+        "assets_info_asset_longname_nocase_idx",
+        "balances_address_idx",
+        "balances_utxo_address_idx",
+        "dispensers_source_idx",
+    ]
+
+    # Verify all indexes exist before rollback
+    for idx in performance_indexes:
+        assert index_exists(state_db, idx), f"Index {idx} should exist before rollback"
+
+    dbbuilder.rollback_migration(state_db, "0013.add_performance_indexes")
+
+    # Verify all indexes are removed
+    for idx in performance_indexes:
+        assert not index_exists(state_db, idx), f"Index {idx} should not exist after rollback"
+
+    # This migration doesn't need ledger_db
+    dbbuilder.apply_migration(state_db, "0013.add_performance_indexes")
+    for idx in performance_indexes:
+        assert index_exists(state_db, idx), f"Index {idx} should exist after re-apply"
+
+
+# =============================================================================
+# Tests for consolidated tables
+# =============================================================================
+
+
 def test_consolidated_balances(state_db, ledger_db, apiv2_client):
     # balances
     sql_ledger = (

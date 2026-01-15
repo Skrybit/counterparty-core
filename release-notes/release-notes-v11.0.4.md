@@ -1,10 +1,12 @@
 # Release Notes - Counterparty Core v11.0.4 (2025-??-??)
 
+This release fixes a bug in the UTXO balances cache rebuilding where destinations from `KNOWN_SOURCES` transactions were not properly restored after a node restart, causing some `utxomove` transactions to go undetected. A rollback to block 926,807 will occur automatically on mainnet.
+
 # Upgrading
 
 **Upgrade Instructions:**
 
-To upgrade, download the latest version of `counterparty-core` and restart `counterparty-server`. An reparse to block 911,955 to correct the transaction cache will occur automatically.
+To upgrade, download the latest version of `counterparty-core` and restart `counterparty-server`. A rollback to block 926,807 will occur automatically on mainnet.
 
 With Docker Compose:
 
@@ -34,15 +36,43 @@ counterparty-server start
 - Fix `current_commit` in API root
 - Fix reorg edge case
 - Fallback to RPC when `getzmqnotifications` RPC call is not available
+- Fix RSFectcher restart
+- Fix state.db reorg
+- Fix UTXO cache building
+- Fix `next_cursor` in API results when `sort` is provided
+- Fix DB config params not being passed to API subprocess (caused connection pool contention)
 
 ## Codebase
 
 - Increase BURN_END_TESTNET3 to 99999999
+- Add graceful SIGTERM handling for Kubernetes deployments (shutdown time: 182s → 21s)
+- Improve Docker build caching for Rust components
+- Add block parsing timing instrumentation at debug level
+- Update Werkzeug to 3.1.4
+- Update PyO3 to 0.24.1
+- Eliminate 8-minute startup delay by storing event column in address_events table (startup time: 8+ min → 33s)
+
+## Performance & Memory
+
+- Add configurable database connection pool limits (`--db-connection-pool-size`, `--db-max-connections`)
+- Add connection pool instrumentation (POOL_STATS logging every 60s with peak tracking and contention warnings)
+- Add memory profiler for monitoring cache sizes and process memory (`--memory-profile`, lightweight with no tracemalloc)
+- Convert NotSupportedTransactionsCache from O(n) list to O(1) set for faster lookups
+- AssetCache loads all assets at startup (~70MB for 246k assets)
+- UTXOBalancesCache uses unbounded dict (~350k entries, ~47MB) - size bounded by blockchain UTXO set, not runtime
 
 ## API
 
+- Fix slow asset lookups by using `COLLATE NOCASE` instead of `UPPER()` for case-insensitive queries
+- Add performance indexes for `assets_info`, `balances`, and `dispensers` tables
+- Optimize list deduplication in verbose mode using sets
+- Fix `get_balances_by_address_and_asset` endpoint
 
 ## CLI
+
+- Add `--db-connection-pool-size` to configure connection pool size (default: 10)
+- Add `--db-max-connections` to limit total database connections across threads (default: 50, 0=unlimited)
+- Add `--memory-profile` to enable periodic memory usage logging
 
 # Credits
 

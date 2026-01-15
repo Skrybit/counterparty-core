@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+import time
 from contextlib import contextmanager
 
 import apsw
@@ -106,10 +107,73 @@ class APSWConnectionPool:
         self.closed = False
         # Thread-local storage for connections
         self.thread_local = threading.local()
-        # Lock only used when absolutely necessary
+        # Lock for connection count management
         self.lock = threading.RLock()
+        # Condition variable for waiting when at max connections
+        self.connection_available = threading.Condition(self.lock)
         # Use a counter instead of tracking every connection
         self.connection_count = 0
+        # Max connections (0 = unlimited)
+        self.max_connections = getattr(config, "DB_MAX_CONNECTIONS", 50)
+        # Track peak connections for monitoring
+        self.peak_connection_count = 0
+
+    def _create_connection_with_limit(self):
+        """Create a new connection, waiting if at max_connections limit."""
+        wait_start = None
+        with self.connection_available:
+            # Wait if at max connections (0 = unlimited)
+            if self.max_connections > 0:
+                while self.connection_count >= self.max_connections and not self.closed:
+                    if wait_start is None:
+                        wait_start = time.time()
+                        logger.warning(
+                            "CONTENTION: %s at %d/%d, thread=%s waiting",
+                            self.name,
+                            self.connection_count,
+                            self.max_connections,
+                            threading.current_thread().name,
+                        )
+                    else:
+                        logger.debug(
+                            "Connection pool %s at max (%d), waiting...",
+                            self.name,
+                            self.max_connections,
+                        )
+                    # Wait up to 30 seconds for a connection to become available
+                    if not self.connection_available.wait(timeout=30):
+                        raise exceptions.DatabaseError(
+                            f"Timeout waiting for database connection (pool {self.name} at max {self.max_connections})"
+                        )
+                    # Check if pool was closed while waiting
+                    if self.closed:
+                        raise exceptions.DatabaseError(
+                            f"Connection pool {self.name} closed while waiting for connection"
+                        )
+
+            # Log wait time if we waited
+            if wait_start is not None:
+                wait_ms = (time.time() - wait_start) * 1000
+                logger.warning(
+                    "Connection acquired after %.0fms wait (%s, thread=%s)",
+                    wait_ms,
+                    self.name,
+                    threading.current_thread().name,
+                )
+
+            self.connection_count += 1
+
+            # Track peak connection count
+            if self.connection_count > self.peak_connection_count:
+                self.peak_connection_count = self.connection_count
+
+        return get_db_connection(self.db_file, read_only=True, check_wal=False)
+
+    def _release_connection(self):
+        """Decrement connection count and notify waiters."""
+        with self.connection_available:
+            self.connection_count -= 1
+            self.connection_available.notify()
 
     @contextmanager
     def connection(self):
@@ -136,15 +200,9 @@ class APSWConnectionPool:
                 cursor = db.execute("SELECT 1")
                 cursor.fetchone()
             except (apsw.ThreadingViolationError, apsw.BusyError):
-                # Only lock when creating a new connection
-                with self.lock:
-                    self.connection_count += 1
-                db = get_db_connection(self.db_file, read_only=True, check_wal=False)
+                db = self._create_connection_with_limit()
         else:
-            # Only lock when creating a new connection
-            with self.lock:
-                self.connection_count += 1
-            db = get_db_connection(self.db_file, read_only=True, check_wal=False)
+            db = self._create_connection_with_limit()
 
         try:
             yield db
@@ -152,26 +210,26 @@ class APSWConnectionPool:
             # Check closed status without lock first
             if self.closed:
                 db.close()
-                with self.lock:
-                    self.connection_count -= 1
+                self._release_connection()
             else:
                 # Fast path: return to local pool without locking
                 if len(self.thread_local.connections) < config.DB_CONNECTION_POOL_SIZE:
                     self.thread_local.connections.append(db)
                 else:
-                    # Only if we need to close the connection
+                    # Close connection and notify waiters
                     db.close()
-                    with self.lock:
-                        self.connection_count -= 1
+                    self._release_connection()
 
     def close(self):
         # Set closed flag first - fast path for new connection requests
         self.closed = True
 
-        with self.lock:
+        with self.connection_available:
             logger.trace(
                 "Closing all connections in pool (%s)... (%s)", self.name, self.connection_count
             )
+            # Wake up any threads waiting for connections
+            self.connection_available.notify_all()
 
         # Close connections in current thread
         if hasattr(self.thread_local, "connections"):
@@ -182,6 +240,21 @@ class APSWConnectionPool:
                     logger.trace("ThreadingViolationError occurred while closing connection.")
             # Clear thread local connections
             self.thread_local.connections = []
+
+    def get_stats(self):
+        """Get current connection pool statistics."""
+        with self.lock:
+            utilization = (
+                (self.connection_count / self.max_connections * 100)
+                if self.max_connections > 0
+                else 0
+            )
+            return {
+                "current": self.connection_count,
+                "max": self.max_connections,
+                "peak": self.peak_connection_count,
+                "utilization": utilization,
+            }
 
 
 class LedgerDBConnectionPool(APSWConnectionPool, metaclass=helpers.SingletonMeta):

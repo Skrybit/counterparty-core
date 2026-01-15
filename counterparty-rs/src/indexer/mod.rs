@@ -21,6 +21,7 @@ use bitcoin;
 use bitcoin::consensus::deserialize;
 use bitcoin::{blockdata::transaction::Transaction, Block};
 
+#[allow(deprecated)]
 use pyo3::prelude::*;
 use types::pipeline::ChanOut;
 
@@ -144,7 +145,7 @@ impl Deserializer {
 }
 
 pub fn register_indexer_module(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
-    let m = PyModule::new_bound(parent_module.py(), "indexer")?;
+    let m = PyModule::new(parent_module.py(), "indexer")?;
     m.add_class::<Indexer>()?;
     m.add_class::<Deserializer>()?;
     parent_module.add_submodule(&m)?;

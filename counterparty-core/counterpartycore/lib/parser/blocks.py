@@ -316,6 +316,9 @@ def parse_block(
 
     The unused arguments `ledger_hash` and `txlist_hash` are for the test suite.
     """
+    # Timing instrumentation for performance analysis
+    block_start = time.perf_counter()
+    timings = {}
 
     # Get block transactions
     cursor = db.cursor()
@@ -336,17 +339,30 @@ def parse_block(
         assert block_index == CurrentState().current_block_index(), "Block index mismatch"
 
     # Expire orders, bets and rps.
+    t0 = time.perf_counter()
     order.expire(db, block_index)
+    timings["order.expire"] = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
     bet.expire(db, block_index, block_time)
+    timings["bet.expire"] = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
     rps.expire(db, block_index)
+    timings["rps.expire"] = time.perf_counter() - t0
 
     # Close dispensers
+    t0 = time.perf_counter()
     dispenser.close_pending(db, block_index)
+    timings["dispenser.close_pending"] = time.perf_counter() - t0
 
     # Fairminters operations
+    t0 = time.perf_counter()
     fairminter.before_block(db, block_index)
+    timings["fairminter.before_block"] = time.perf_counter() - t0
 
     txlist = []
+    t0 = time.perf_counter()
     for tx in transactions:
         try:
             parse_tx(db, tx)
@@ -358,9 +374,23 @@ def parse_block(
             logger.warning("ParseTransactionError for tx %s: %s", tx["tx_hash"], e)
             raise e
             # pass
+    timings["parse_transactions"] = time.perf_counter() - t0
 
     # Fairminters operations
+    t0 = time.perf_counter()
     fairminter.after_block(db, block_index)
+    timings["fairminter.after_block"] = time.perf_counter() - t0
+
+    # Log timing breakdown
+    block_duration = time.perf_counter() - block_start
+    timing_str = ", ".join(f"{k}={v:.3f}s" for k, v in sorted(timings.items(), key=lambda x: -x[1]))
+    logger.debug(
+        "Block %s parsed (%.2fs, %d txs): %s",
+        block_index,
+        block_duration,
+        len(transactions),
+        timing_str,
+    )
 
     if block_index != config.MEMPOOL_BLOCK_INDEX:
         # Calculate consensus hashes.

@@ -34,6 +34,7 @@ UPGRADE_ACTIONS = {
         "11.0.1": [("rollback", 902000)],
         "11.0.2": [("refresh_state_db", 0)],
         "11.0.3": [("reparse", 911955)],
+        "11.0.4": [("rollback", 926807)],
     },
     "testnet3": {
         "10.3.0": [("reparse", 0)],
@@ -291,6 +292,8 @@ INFLUX_DB_BUCKET = "node-telemetry"
 LOG_IN_CONSOLE = False
 
 DEFAULT_DB_CONNECTION_POOL_SIZE = 10
+# Maximum total connections across all threads (0 = unlimited)
+DEFAULT_DB_MAX_CONNECTIONS = 50
 
 DEFAULT_UTXO_VALUE = 546
 

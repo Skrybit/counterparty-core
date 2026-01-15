@@ -99,6 +99,19 @@ def rpc_call(payload, retry=0):
                 )
             if response.status_code == 503:
                 raise ConnectionError("Received 503 error from backend")
+            if response.status_code == 429:
+                # Rate limited - retry with exponential backoff
+                backoff_time = min(2**tries, 60)  # Max 60 seconds
+                logger.warning(
+                    "Rate limited by backend (429 Too Many Requests). Retrying in %s seconds... (Attempt: %s)",
+                    backoff_time,
+                    tries,
+                    stack_info=config.VERBOSE > 0,
+                )
+                if should_retry():
+                    time.sleep(backoff_time)
+                    continue
+                raise exceptions.BitcoindRPCError(str(response.status_code) + " " + response.reason)
             if response.status_code not in (200, 500):
                 raise exceptions.BitcoindRPCError(str(response.status_code) + " " + response.reason)
             break
@@ -198,6 +211,8 @@ def safe_rpc_payload(payload):
             raise exceptions.BitcoindRPCError(
                 f"Cannot communicate with Bitcoin Core at `{clean_url_for_log(config.BACKEND_URL)}`. (server is set to run on {config.NETWORK_NAME}, is backend?)"
             )
+        if response.status_code == 429:
+            raise exceptions.BitcoindRPCError("429 Too Many Requests")
         response = response.json()
         if isinstance(response, list):
             return response

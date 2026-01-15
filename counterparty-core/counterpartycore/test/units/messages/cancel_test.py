@@ -37,6 +37,28 @@ def test_compose(ledger_db, defaults):
         cancel.compose(ledger_db, closed_bet["source"], closed_bet["tx_hash"])
 
 
+def test_unpack_invalid_length():
+    """Test unpack with invalid message length."""
+    # Too short message
+    offer_hash, status = cancel.unpack(b"short")
+    assert offer_hash is None
+    assert status == "invalid: could not unpack"
+
+    # Empty message
+    offer_hash, status = cancel.unpack(b"")
+    assert offer_hash is None
+    assert status == "invalid: could not unpack"
+
+
+def test_unpack_return_dict():
+    """Test unpack with return_dict=True for invalid message."""
+    result = cancel.unpack(b"short", return_dict=True)
+    assert result == {
+        "offer_hash": None,
+        "status": "invalid: could not unpack",
+    }
+
+
 def test_parse_cancel_order(ledger_db, blockchain_mock, test_helpers, current_block_index):
     open_order = get_open_order(ledger_db)
     tx = blockchain_mock.dummy_tx(ledger_db, open_order["source"])

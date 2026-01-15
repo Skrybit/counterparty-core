@@ -200,6 +200,38 @@ def test_new_get_asset_info(apiv2_client):
     }
 
 
+def test_get_asset_by_longname_case_insensitive(state_db, apiv2_client):
+    """Test that asset lookup by longname is case-insensitive (uses COLLATE NOCASE)."""
+    # Insert a test asset with mixed-case longname directly into state_db
+    cursor = state_db.cursor()
+    cursor.execute(
+        """
+        INSERT INTO assets_info (asset, asset_id, asset_longname, divisible, supply, description, issuer, owner, first_issuance_block_index, last_issuance_block_index)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "A12345678901234567",  # numeric asset name
+            "12345678901234567",
+            "PARENT.MixedCaseChild",  # mixed-case longname
+            True,
+            100,
+            "Test subasset",
+            "mn6q3dS2EnDUx3bmyWc6D4szJNVGtaR7zc",
+            "mn6q3dS2EnDUx3bmyWc6D4szJNVGtaR7zc",
+            100,
+            100,
+        ),
+    )
+
+    # Query with UPPERCASE longname - should still find the asset
+    url = "/v2/assets/PARENT.MIXEDCASECHILD"
+    result = apiv2_client.get(url).json["result"]
+
+    assert result is not None, "Asset should be found with case-insensitive lookup"
+    assert result["asset_longname"] == "PARENT.MixedCaseChild"
+    assert result["description"] == "Test subasset"
+
+
 def test_invalid_hash(apiv2_client):
     tx_hash = "65e649d58b95602b04172375dbd86783b7379e455a2bc801338d9299d10425a"
     url = f"/v2/orders/{tx_hash}/matches"
@@ -533,6 +565,20 @@ def test_get_balances_by_addresses_pagination(apiv2_client, defaults):
     assert asset_result[0]["asset"] == "XCP"
     assert response_asset.json["next_cursor"] is None
     assert response_asset.json["result_count"] == 1
+
+    # Test that next_cursor is None when using sort (cursor is ignored with sort)
+    # Using /v2/orders which uses select_rows with sort support
+    # First verify that without sort, we get a next_cursor when there are more results
+    url_no_sort = "/v2/orders?limit=1"
+    response_no_sort = apiv2_client.get(url_no_sort)
+    assert response_no_sort.status_code == 200
+    assert response_no_sort.json["result_count"] > 1  # fixtures have 7 orders
+    assert response_no_sort.json["next_cursor"] is not None
+    # Now verify that with sort, next_cursor is None to avoid infinite loops
+    url_sorted = "/v2/orders?limit=1&sort=expiration:desc"
+    response_sorted = apiv2_client.get(url_sorted)
+    assert response_sorted.status_code == 200
+    assert response_sorted.json["next_cursor"] is None
 
 
 def redirect_to_api_v1():
