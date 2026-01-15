@@ -152,23 +152,44 @@ def save_db_to_cache(network, source_db_path):
     """
     Copy the database to the cache directory.
 
+    Before copying, checkpoints the WAL to ensure a clean database state,
+    and verifies database integrity.
+
     Args:
         network: The network name
         source_db_path: Path to the source database file
+
+    Raises:
+        RuntimeError: If database integrity check fails
     """
     network_cache_dir = get_network_cache_dir(network)
     os.makedirs(network_cache_dir, exist_ok=True)
 
     cached_db_path = get_cached_db_path(network)
 
-    # Copy the main database file
+    # Checkpoint WAL to ensure clean database state before copying
+    db = apsw.Connection(source_db_path)
+    try:
+        # TRUNCATE mode checkpoints and then truncates the WAL file to zero bytes
+        db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+        # Verify database integrity before saving to cache
+        result = db.execute("PRAGMA integrity_check").fetchone()
+        if result[0] != "ok":
+            raise RuntimeError(f"Database integrity check failed: {result[0]}")
+
+        print(f"Database integrity verified and WAL checkpointed: {source_db_path}")
+    finally:
+        db.close()
+
+    # Copy only the main database file (WAL should be empty after checkpoint)
     shutil.copy2(source_db_path, cached_db_path)
 
-    # Also copy WAL and SHM files if they exist
+    # Remove any stale WAL/SHM files in cache directory
     for suffix in ["-wal", "-shm"]:
-        source_extra = source_db_path + suffix
-        if os.path.exists(source_extra):
-            shutil.copy2(source_extra, cached_db_path + suffix)
+        cached_extra = cached_db_path + suffix
+        if os.path.exists(cached_extra):
+            os.remove(cached_extra)
 
     print(f"Saved database to cache: {cached_db_path}")
 
@@ -184,16 +205,35 @@ def restore_db_from_cache(network, target_dir):
     """
     Restore the database from cache to the target directory.
 
+    Verifies database integrity after restoration to catch corrupted caches early.
+
     Args:
         network: The network name
         target_dir: Directory where the database should be restored
 
     Returns:
         Path to the restored database file
+
+    Raises:
+        FileNotFoundError: If no cached database exists
+        RuntimeError: If cached database is corrupted
     """
     cached_db_path = get_cached_db_path(network)
     if not os.path.exists(cached_db_path):
         raise FileNotFoundError(f"No cached database found for {network}")
+
+    # Verify cached database integrity before restoring
+    db = apsw.Connection(cached_db_path)
+    try:
+        result = db.execute("PRAGMA integrity_check").fetchone()
+        if result[0] != "ok":
+            raise RuntimeError(
+                f"Cached database is corrupted: {result[0]}. "
+                f"Clear the cache with cache_manager.clear_cache('{network}') and re-run."
+            )
+        print(f"Cached database integrity verified: {cached_db_path}")
+    finally:
+        db.close()
 
     os.makedirs(target_dir, exist_ok=True)
 
@@ -216,14 +256,14 @@ def restore_db_from_cache(network, target_dir):
     db_filename = get_db_filename(network)
     target_db_path = os.path.join(target_dir, db_filename)
 
-    # Copy the main database file
+    # Copy only the main database file (no WAL/SHM since we checkpoint before saving)
     shutil.copy2(cached_db_path, target_db_path)
 
-    # Also copy WAL and SHM files if they exist
+    # Remove any stale WAL/SHM files in target directory
     for suffix in ["-wal", "-shm"]:
-        cached_extra = cached_db_path + suffix
-        if os.path.exists(cached_extra):
-            shutil.copy2(cached_extra, target_db_path + suffix)
+        target_extra = target_db_path + suffix
+        if os.path.exists(target_extra):
+            os.remove(target_extra)
 
     print(f"Restored database from cache: {target_db_path}")
     return target_db_path

@@ -240,6 +240,9 @@ class CounterpartyServer(threading.Thread):
             # import traceback
             # print(traceback.format_exc())
             logger.error("Error in server thread: %s", e, stack_info=True)
+        finally:
+            # Always signal main thread to stop when server thread ends
+            # This handles both exceptions and early returns (e.g., API startup failure)
             _thread.interrupt_main()
 
     def stop(self):
