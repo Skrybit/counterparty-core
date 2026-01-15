@@ -2136,10 +2136,10 @@ def get_balances_by_address_and_asset(
     ]
     if type == "utxo":
         where.pop(0)
-        where.pop(1)
+        where.pop(0)  # pop twice to remove first two elements
     elif type == "address":
-        where.pop(2)
-        where.pop(3)
+        where.pop()  # pop last element (index 3)
+        where.pop()  # pop new last element (was index 2)
 
     return select_rows(
         state_db,

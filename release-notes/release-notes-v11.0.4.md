@@ -66,6 +66,7 @@ counterparty-server start
 - Fix slow asset lookups by using `COLLATE NOCASE` instead of `UPPER()` for case-insensitive queries
 - Add performance indexes for `assets_info`, `balances`, and `dispensers` tables
 - Optimize list deduplication in verbose mode using sets
+- Fix `get_balances_by_address_and_asset` endpoint
 
 ## CLI
 
