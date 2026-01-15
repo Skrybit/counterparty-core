@@ -3,6 +3,9 @@ name: Integrations Test
 on:
   push:
     branches: "**"
+  schedule:
+    # Run daily at 5:00 AM UTC to keep the integration cache fresh
+    - cron: '0 5 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
