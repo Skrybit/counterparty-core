@@ -24,3 +24,30 @@ def test_healthz_light(apiv2_client, monkeypatch, current_block_index):
     assert apiv2_client.get("/healthz").json == {"result": {"status": "Healthy"}}
     assert apiv2_client.get("/healthz?check_type=heavy").json == {"result": {"status": "Healthy"}}
     restore_network()
+
+
+def test_rate_limited_get(apiv2_client):
+    response = apiv2_client.get("/rate-limited")
+    assert response.status_code == 429
+    assert response.json == {"error": "rate_limit_exceeded"}
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    assert response.headers["Access-Control-Allow-Headers"] == "*"
+    assert response.headers["Access-Control-Allow-Methods"] == "*"
+
+
+def test_rate_limited_post(apiv2_client):
+    response = apiv2_client.post("/rate-limited")
+    assert response.status_code == 429
+    assert response.json == {"error": "rate_limit_exceeded"}
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    assert response.headers["Access-Control-Allow-Headers"] == "*"
+    assert response.headers["Access-Control-Allow-Methods"] == "*"
+
+
+def test_rate_limited_options(apiv2_client):
+    response = apiv2_client.options("/rate-limited")
+    assert response.status_code == 204
+    assert response.data == b""
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    assert response.headers["Access-Control-Allow-Headers"] == "*"
+    assert response.headers["Access-Control-Allow-Methods"] == "*"
