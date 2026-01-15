@@ -6,6 +6,116 @@ import pytest
 from counterpartycore.lib.utils import helpers
 
 
+def test_chunkify():
+    """Test chunkify function."""
+    assert helpers.chunkify([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]
+    assert helpers.chunkify([1, 2, 3, 4], 2) == [[1, 2], [3, 4]]
+    assert helpers.chunkify([1, 2, 3], 1) == [[1], [2], [3]]
+    assert helpers.chunkify([], 5) == []
+    # Test with n=0 (should use n=1)
+    assert helpers.chunkify([1, 2, 3], 0) == [[1], [2], [3]]
+
+
+def test_flat():
+    """Test flat function."""
+    assert helpers.flat([1, 2, 3]) == [1, 2, 3]
+    assert helpers.flat((1, 2, 3)) == [1, 2, 3]
+    assert helpers.flat(range(3)) == [0, 1, 2]
+
+
+def test_accumulate():
+    """Test accumulate function."""
+    data = [("a", 1), ("a", 2), ("b", 3), ("b", 4), ("a", 5)]
+    result = list(helpers.accumulate(data))
+    assert result == [("a", 3), ("b", 7), ("a", 5)]
+
+
+def test_active_options():
+    """Test active_options function."""
+    assert helpers.active_options(0b1111, 0b0101) is True
+    assert helpers.active_options(0b1010, 0b0101) is False
+    assert helpers.active_options(0b0101, 0b0101) is True
+
+
+def test_make_id():
+    """Test make_id function."""
+    assert helpers.make_id("hash1", "hash2") == "hash1_hash2"
+
+
+def test_satoshirate_to_fiat():
+    """Test satoshirate_to_fiat function."""
+    assert helpers.satoshirate_to_fiat(10000) == 100.0
+    assert helpers.satoshirate_to_fiat(12345) == 123.45
+    assert helpers.satoshirate_to_fiat(0) == 0.0
+
+
+def test_format_duration():
+    """Test format_duration function."""
+    assert helpers.format_duration(3661) == "1h 1m 1s"
+    assert helpers.format_duration(0) == "0h 0m 0s"
+    assert helpers.format_duration(7200) == "2h 0m 0s"
+
+
+def test_is_url():
+    """Test is_url function."""
+    assert helpers.is_url("https://example.com") is True
+    assert helpers.is_url("http://example.com/path") is True
+    assert helpers.is_url("ftp://files.example.com") is True
+    assert helpers.is_url("not-a-url") is False
+    assert helpers.is_url("") is False
+    assert helpers.is_url("example.com") is False
+
+
+def test_divide():
+    """Test divide function."""
+    assert helpers.divide(10, 2) == 5
+    assert helpers.divide(10, 0) == 0
+    assert helpers.divide(0, 10) == 0
+    assert helpers.divide(1, 3) == helpers.D("0.3333333333333333")
+
+
+def test_bytes_to_string():
+    """Test bytes_to_string function."""
+    # Valid UTF-8
+    assert helpers.bytes_to_string(b"hello") == "hello"
+    # Invalid UTF-8 should return hex
+    assert helpers.bytes_to_string(b"\xff\xfe") == "fffe"
+
+
+def test_is_process_alive():
+    """Test is_process_alive function."""
+    # Current process should be alive
+    assert helpers.is_process_alive(os.getpid()) is True
+    # Non-existent PID (very high number)
+    assert helpers.is_process_alive(999999999) is False
+
+
+def test_api_json_encoder():
+    """Test ApiJsonEncoder with various types."""
+    import decimal
+
+    encoder = helpers.ApiJsonEncoder()
+
+    # Test decimal
+    assert encoder.default(decimal.Decimal("1.23456789")) == "1.23456789"
+
+    # Test bytes
+    assert encoder.default(b"\x01\x02\x03") == "010203"
+
+    # Test callable
+    def my_func():
+        pass
+
+    assert encoder.default(my_func) == "my_func"
+
+    # Test object with __class__ (custom object)
+    class CustomObj:
+        def __str__(self):
+            return "custom_string"
+
+    assert encoder.default(CustomObj()) == "custom_string"
+
+
 def test_is_valid_tx_hash():
     assert not helpers.is_valid_tx_hash("foobar")
     assert helpers.is_valid_tx_hash(
