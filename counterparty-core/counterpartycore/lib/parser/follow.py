@@ -318,24 +318,33 @@ class BlockchainWatcher:
             self.loop.close()
 
     def stop(self):
-        logger.debug("Stopping blockchain watcher...")
-        # Signal the handle loop to stop
-        self.stop_event.set()
-        # Cancel the handle task
-        if self.task and not self.task.done():
-            self.task.cancel()
-        # Stop the event loop (thread-safe in Python 3.9+)
-        if self.loop.is_running():
-            self.loop.call_soon_threadsafe(self.loop.stop)
-        # Clean up ZMQ context
+        # Protect entire shutdown from KeyboardInterrupt
         try:
-            self.zmq_context.destroy(linger=0)  # Don't wait for pending messages
-        except Exception as e:  # pylint: disable=broad-except
-            logger.debug("Error destroying ZMQ context: %s", e)
-        # Stop mempool parser
-        if self.mempool_parser:
-            self.mempool_parser.stop()
-        logger.debug("Blockchain watcher stopped.")
+            logger.debug("Stopping blockchain watcher...")
+            # Signal the handle loop to stop
+            self.stop_event.set()
+            # Cancel the handle task
+            if self.task and not self.task.done():
+                self.task.cancel()
+            # Stop the event loop (thread-safe in Python 3.9+)
+            if self.loop.is_running():
+                self.loop.call_soon_threadsafe(self.loop.stop)
+            # Clean up ZMQ sockets and context
+            try:
+                # Close sockets first with linger=0 to avoid blocking
+                self.zmq_sub_socket_sequence.setsockopt(zmq.LINGER, 0)
+                self.zmq_sub_socket_sequence.close()
+                self.zmq_sub_socket_rawblock.setsockopt(zmq.LINGER, 0)
+                self.zmq_sub_socket_rawblock.close()
+                self.zmq_context.term()
+            except Exception as e:  # pylint: disable=broad-except
+                logger.debug("Error cleaning up ZMQ: %s", e)
+            # Stop mempool parser
+            if self.mempool_parser:
+                self.mempool_parser.stop()
+            logger.debug("Blockchain watcher stopped.")
+        except KeyboardInterrupt:
+            pass  # Ignore repeated Ctrl+C during shutdown
 
 
 def get_raw_mempool(db):
@@ -389,11 +398,13 @@ class RawMempoolParser(threading.Thread):
         )
 
     def stop(self):
-        logger.debug("Stopping RawMempoolParser...")
-        self.db.interrupt()
-        # if self.is_alive():
-        self.stop_event.set()
-        self.join()
+        try:
+            logger.debug("Stopping RawMempoolParser...")
+            self.db.interrupt()
+            self.stop_event.set()
+            self.join(timeout=5)  # Don't wait forever
+        except KeyboardInterrupt:
+            pass  # Ignore repeated Ctrl+C during shutdown
 
 
 class NotSupportedTransactionsCache(metaclass=helpers.SingletonMeta):
