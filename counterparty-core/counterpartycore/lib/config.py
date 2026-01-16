@@ -7,7 +7,7 @@ UNIT = 100000000  # The same across assets.
 
 
 # Semantic Version
-__version__ = "11.0.4-alpha.1"  # for hatch
+__version__ = "11.0.4"  # for hatch
 VERSION_STRING = __version__
 version = VERSION_STRING.split("-", maxsplit=1)[0].split(".")
 VERSION_MAJOR = int(version[0])
@@ -50,6 +50,7 @@ UPGRADE_ACTIONS = {
         "11.0.2": [("refresh_state_db", 0)],
         "11.0.3": [("reparse", 2820893)],
         "11.0.4-alpha.1": [("reparse", 4017708)],
+        "11.0.4": [("reparse", 4017708)],
     },
     "testnet4": {
         "10.10.0": [("rollback", 64492)],
