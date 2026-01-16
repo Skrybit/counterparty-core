@@ -51,6 +51,7 @@ counterparty-server start
 - Update Werkzeug to 3.1.4
 - Update PyO3 to 0.24.1
 - Eliminate 8-minute startup delay by storing event column in address_events table (startup time: 8+ min → 33s)
+- Add checkpoint for block 932500
 
 ## Performance & Memory
 
