@@ -592,6 +592,8 @@ class TestBlockchainWatcher:
         watcher.loop = mock.MagicMock()
         watcher.loop.is_running.return_value = True
         watcher.zmq_context = mock.MagicMock()
+        watcher.zmq_sub_socket_sequence = mock.MagicMock()
+        watcher.zmq_sub_socket_rawblock = mock.MagicMock()
         watcher.mempool_parser = None
 
         watcher.stop()
@@ -599,7 +601,7 @@ class TestBlockchainWatcher:
         assert watcher.stop_event.is_set()
         watcher.task.cancel.assert_called_once()
         watcher.loop.call_soon_threadsafe.assert_called_once()
-        watcher.zmq_context.destroy.assert_called_once_with(linger=0)
+        watcher.zmq_context.term.assert_called_once()
 
     def test_stop_with_mempool_parser(self, watcher_setup):
         """Test stop method with mempool parser"""
