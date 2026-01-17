@@ -446,6 +446,9 @@ def parse_block(
             },
         )
 
+        # Clean up spent UTXOs from cache to prevent unbounded memory growth
+        ledger.caches.UTXOBalancesCache.cleanup_if_exists()
+
         cursor.close()
 
         return new_ledger_hash, new_txlist_hash, new_messages_hash
