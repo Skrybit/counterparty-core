@@ -62,7 +62,7 @@ counterparty-server start
 - Add memory profiler for monitoring cache sizes and process memory (`--memory-profile`, lightweight with no tracemalloc)
 - Convert NotSupportedTransactionsCache from O(n) list to O(1) set for faster lookups (backup file limit removed; cache cleared on rollback)
 - AssetCache loads all assets at startup (~70MB for 246k assets)
-- UTXOBalancesCache uses unbounded dict (~350k entries, ~47MB) - size bounded by blockchain UTXO set, not runtime
+- UTXOBalancesCache now cleans up spent UTXOs after each block to prevent unbounded memory growth
 
 ## API
 
