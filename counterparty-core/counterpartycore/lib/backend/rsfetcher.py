@@ -201,7 +201,9 @@ class RSFetcher(metaclass=helpers.SingletonMeta):
         logger.info("Stopping RSFetcher thread...")
         self.stopped_event.set()  # Signal all threads to stop
         try:
-            if self.prefetch_task:
+            if self.prefetch_task and not no_wait:
+                # Only wait for prefetch task if not called from within the task itself
+                # (no_wait=True is used when restarting from error handler inside prefetch_blocks)
                 logger.debug("Waiting for prefetch task to finish (timeout: 10s)...")
                 try:
                     # Wait up to 10 seconds for the prefetch task to complete

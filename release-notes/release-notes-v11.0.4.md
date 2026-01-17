@@ -1,4 +1,4 @@
-# Release Notes - Counterparty Core v11.0.4 (2025-??-??)
+# Release Notes - Counterparty Core v11.0.4 (2026-01-17)
 
 This release fixes a bug in the UTXO balances cache rebuilding where destinations from `KNOWN_SOURCES` transactions were not properly restored after a node restart, causing some `utxomove` transactions to go undetected. A rollback to block 926,807 will occur automatically on mainnet.
 
@@ -36,11 +36,13 @@ counterparty-server start
 - Fix `current_commit` in API root
 - Fix reorg edge case
 - Fallback to RPC when `getzmqnotifications` RPC call is not available
-- Fix RSFectcher restart
+- Fix RSFetcher restart
 - Fix state.db reorg
 - Fix UTXO cache building
 - Fix `next_cursor` in API results when `sort` is provided
 - Fix DB config params not being passed to API subprocess (caused connection pool contention)
+- Fix connection leak on pooled connection validation failure
+- Fix RSFetcher restart delay when recovering from errors
 
 ## Codebase
 
@@ -58,7 +60,7 @@ counterparty-server start
 - Add configurable database connection pool limits (`--db-connection-pool-size`, `--db-max-connections`)
 - Add connection pool instrumentation (POOL_STATS logging every 60s with peak tracking and contention warnings)
 - Add memory profiler for monitoring cache sizes and process memory (`--memory-profile`, lightweight with no tracemalloc)
-- Convert NotSupportedTransactionsCache from O(n) list to O(1) set for faster lookups
+- Convert NotSupportedTransactionsCache from O(n) list to O(1) set for faster lookups (backup file limit removed; cache cleared on rollback)
 - AssetCache loads all assets at startup (~70MB for 246k assets)
 - UTXOBalancesCache uses unbounded dict (~350k entries, ~47MB) - size bounded by blockchain UTXO set, not runtime
 

@@ -200,6 +200,11 @@ class APSWConnectionPool:
                 cursor = db.execute("SELECT 1")
                 cursor.fetchone()
             except (apsw.ThreadingViolationError, apsw.BusyError):
+                # Close the bad connection before creating a new one
+                try:
+                    db.close()
+                except apsw.Error:  # noqa: S110
+                    pass  # Connection may already be closed or in bad state
                 db = self._create_connection_with_limit()
         else:
             db = self._create_connection_with_limit()
