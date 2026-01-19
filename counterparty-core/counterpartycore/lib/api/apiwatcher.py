@@ -698,5 +698,8 @@ class APIWatcher(threading.Thread):
     def stop(self):
         logger.info("Stopping API Watcher thread...")
         self.stop_event.set()
-        self.join()
-        logger.info("API Watcher thread stopped.")
+        self.join(timeout=5)
+        if self.is_alive():
+            logger.warning("API Watcher thread did not stop in time, continuing...")
+        else:
+            logger.info("API Watcher thread stopped.")
