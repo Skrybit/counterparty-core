@@ -118,8 +118,8 @@ class UTXOBalancesCache(metaclass=helpers.SingletonMeta):
         # Store db reference for lazy loading on cache miss
         self.db = db
         logger.debug("Initialising utxo balances cache...")
-        # Simple dict - no limit needed (UTXO set size bounded by blockchain, not runtime)
-        # Typical size: ~45k UTXOs = ~50MB, grows only with network UTXO set growth
+        # Simple dict containing only UTXOs that currently have a balance
+        # Size bounded by active UTXO set with balances (not historical)
         self.utxos_with_balance = {}
 
         cursor = db.cursor()
@@ -215,16 +215,41 @@ class UTXOBalancesCache(metaclass=helpers.SingletonMeta):
         )
         result = cursor.fetchone() is not None
 
-        # Cache the result (both positive and negative)
-        self.utxos_with_balance[utxo] = result
+        # Only cache positive results to avoid unbounded memory growth
+        # (negative results from DB queries are not cached - they would accumulate indefinitely)
+        if result:
+            self.utxos_with_balance[utxo] = True
         return result
 
     def add_balance(self, utxo):
         self.utxos_with_balance[utxo] = True
 
     def remove_balance(self, utxo):
-        # Mark as no balance rather than removing (so cache miss doesn't re-query)
+        # Mark as no balance (needed during parsing before DB is updated)
         self.utxos_with_balance[utxo] = False
+
+    def cleanup_spent_utxos(self):
+        """
+        Remove entries marked as spent (False) from the cache.
+        Should be called after each block is parsed to prevent unbounded memory growth.
+        """
+        # Build list of keys to remove (can't modify dict during iteration)
+        spent_utxos = [
+            utxo for utxo, has_balance in self.utxos_with_balance.items() if not has_balance
+        ]
+        for utxo in spent_utxos:
+            del self.utxos_with_balance[utxo]
+        if spent_utxos:
+            logger.trace("Cleaned up %d spent UTXOs from cache", len(spent_utxos))
+
+    @classmethod
+    def cleanup_if_exists(cls):
+        """
+        Clean up spent UTXOs only if the cache singleton already exists.
+        This avoids creating the singleton with a potentially stale DB connection.
+        """
+        if cls in helpers.SingletonMeta._instances:
+            helpers.SingletonMeta._instances[cls].cleanup_spent_utxos()
 
 
 class OrdersCache(metaclass=helpers.SingletonMeta):

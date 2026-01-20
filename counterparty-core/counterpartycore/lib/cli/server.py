@@ -66,11 +66,14 @@ class AssetConservationChecker(threading.Thread):
         self.stop_event.set()
         if self.db is not None:
             self.db.interrupt()
-        self.join()
+        self.join(timeout=5)
+        if self.is_alive():
+            logger.warning("Asset Conservation Checker thread did not stop in time, continuing...")
+        else:
+            logger.info("Asset Conservation Checker thread stopped.")
         if self.db is not None:
             self.db.close()
             self.db = None
-        logger.info("Asset Conservation Checker thread stopped.")
 
 
 class CounterpartyServer(threading.Thread):
@@ -268,6 +271,10 @@ class CounterpartyServer(threading.Thread):
             self.apiserver_v1.stop()
         if self.apiserver_v2:
             self.apiserver_v2.stop()
+
+        if self.pool_monitor:
+            logger.info("Stopping MainProcess Connection Pool Monitor thread...")
+            self.pool_monitor.stop()
 
         if self.periodic_profiler:
             logger.info("Stopping periodic profiler...")

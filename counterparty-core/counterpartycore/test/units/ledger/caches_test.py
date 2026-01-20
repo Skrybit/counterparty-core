@@ -663,3 +663,87 @@ def test_invalid_attach_transaction_empty_destination(ledger_db, defaults):
     assert utxo_cache is not None
     # Empty string should not be in cache
     assert "" not in utxo_cache.utxos_with_balance
+
+
+def test_cleanup_spent_utxos(ledger_db):
+    """Test that cleanup_spent_utxos removes False entries from cache."""
+    caches.reset_caches()
+    utxo_cache = caches.UTXOBalancesCache(ledger_db)
+
+    # Add some UTXOs with balance
+    utxo_cache.add_balance("utxo_active_1")
+    utxo_cache.add_balance("utxo_active_2")
+
+    # Mark some as spent (False)
+    utxo_cache.remove_balance("utxo_spent_1")
+    utxo_cache.remove_balance("utxo_spent_2")
+    utxo_cache.remove_balance("utxo_spent_3")
+
+    # Verify initial state
+    assert utxo_cache.utxos_with_balance.get("utxo_active_1") is True
+    assert utxo_cache.utxos_with_balance.get("utxo_active_2") is True
+    assert utxo_cache.utxos_with_balance.get("utxo_spent_1") is False
+    assert utxo_cache.utxos_with_balance.get("utxo_spent_2") is False
+    assert utxo_cache.utxos_with_balance.get("utxo_spent_3") is False
+
+    # Cleanup spent UTXOs
+    utxo_cache.cleanup_spent_utxos()
+
+    # Verify only active UTXOs remain
+    assert "utxo_active_1" in utxo_cache.utxos_with_balance
+    assert "utxo_active_2" in utxo_cache.utxos_with_balance
+    assert "utxo_spent_1" not in utxo_cache.utxos_with_balance
+    assert "utxo_spent_2" not in utxo_cache.utxos_with_balance
+    assert "utxo_spent_3" not in utxo_cache.utxos_with_balance
+
+
+def test_cleanup_if_exists_with_existing_cache(ledger_db):
+    """Test that cleanup_if_exists works when singleton exists."""
+    caches.reset_caches()
+
+    # Create the singleton
+    utxo_cache = caches.UTXOBalancesCache(ledger_db)
+    utxo_cache.add_balance("utxo1")
+    utxo_cache.remove_balance("utxo_spent")
+
+    # Verify spent UTXO is in cache
+    assert "utxo_spent" in utxo_cache.utxos_with_balance
+
+    # Call cleanup_if_exists
+    caches.UTXOBalancesCache.cleanup_if_exists()
+
+    # Verify spent UTXO was removed
+    assert "utxo_spent" not in utxo_cache.utxos_with_balance
+    assert "utxo1" in utxo_cache.utxos_with_balance
+
+
+def test_cleanup_if_exists_without_existing_cache():
+    """Test that cleanup_if_exists does not create singleton if it doesn't exist."""
+    caches.reset_caches()
+
+    # Verify singleton doesn't exist
+    from counterpartycore.lib.utils import helpers
+
+    assert caches.UTXOBalancesCache not in helpers.SingletonMeta._instances
+
+    # Call cleanup_if_exists - should not create singleton
+    caches.UTXOBalancesCache.cleanup_if_exists()
+
+    # Verify singleton still doesn't exist
+    assert caches.UTXOBalancesCache not in helpers.SingletonMeta._instances
+
+
+def test_has_balance_does_not_cache_negative_db_results(ledger_db):
+    """Test that has_balance does not cache negative results from DB queries."""
+    caches.reset_caches()
+    utxo_cache = caches.UTXOBalancesCache(ledger_db)
+
+    # Query for a UTXO that doesn't exist in DB
+    non_existent_utxo = "non_existent_utxo_12345:99"
+    result = utxo_cache.has_balance(non_existent_utxo)
+
+    # Should return False
+    assert result is False
+
+    # Should NOT be cached (to prevent unbounded memory growth)
+    assert non_existent_utxo not in utxo_cache.utxos_with_balance

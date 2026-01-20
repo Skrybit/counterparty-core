@@ -43,4 +43,6 @@ class BackendHeight(threading.Thread):
     def stop(self):
         self.stop_event.set()
         logger.info("Stopping BackendHeight thread...")
-        self.join()
+        self.join(timeout=5)
+        if self.is_alive():
+            logger.warning("BackendHeight thread did not stop in time, continuing...")
