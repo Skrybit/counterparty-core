@@ -1,4 +1,4 @@
-# Release Notes - Counterparty Core v11.0.4 (2026-01-17)
+# Release Notes - Counterparty Core v11.0.4 (2026-01-20)
 
 This release fixes a bug in the UTXO balances cache rebuilding where destinations from `KNOWN_SOURCES` transactions were not properly restored after a node restart, causing some `utxomove` transactions to go undetected. A rollback to block 926,807 will occur automatically on mainnet.
 
@@ -63,6 +63,7 @@ counterparty-server start
 - Convert NotSupportedTransactionsCache from O(n) list to O(1) set for faster lookups (backup file limit removed; cache cleared on rollback)
 - AssetCache loads all assets at startup (~70MB for 246k assets)
 - UTXOBalancesCache now cleans up spent UTXOs after each block to prevent unbounded memory growth
+- Improve RSFetcher restart logic
 
 ## API
 
