@@ -148,7 +148,7 @@ def rollback(sh_counterparty_server, block_index):
     sh_counterparty_server("rollback", block_index)
 
 
-def catchup(server_args, api_url, timeout_minutes=20):
+def catchup(server_args, api_url, timeout_minutes=20, min_block_index=None):
     """
     Start the server and wait for it to catch up to the chain tip.
 
@@ -156,6 +156,9 @@ def catchup(server_args, api_url, timeout_minutes=20):
         server_args: List of arguments for the counterparty-server command
         api_url: The API URL to check for readiness
         timeout_minutes: Maximum time to wait for catchup
+        min_block_index: If provided, wait for counterparty_height to reach this block
+                         instead of relying on server_ready (which can be affected by
+                         rate limiting issues with the backend)
 
     Raises:
         Exception: If the server doesn't become ready within the timeout
@@ -168,16 +171,31 @@ def catchup(server_args, api_url, timeout_minutes=20):
     )
 
     try:
-        server_ready = False
+        ready = False
         start_time = time.time()
         error = None
-        while not server_ready:
+        while not ready:
             try:
                 response = requests.get(api_url, timeout=5).json()
                 server_ready = response["result"]["server_ready"]
-                if not server_ready:
-                    print("Waiting for server to be ready...")
-                    time.sleep(1)
+                counterparty_height = response["result"].get("counterparty_height")
+
+                if min_block_index is not None:
+                    # Wait for the server to reach the minimum required block
+                    if counterparty_height is not None and counterparty_height >= min_block_index:
+                        ready = True
+                    else:
+                        print(
+                            f"Waiting for block {min_block_index} (current: {counterparty_height})..."
+                        )
+                        time.sleep(1)
+                else:
+                    # Original behavior: just wait for server_ready
+                    if server_ready:
+                        ready = True
+                    else:
+                        print("Waiting for server to be ready...")
+                        time.sleep(1)
             except Exception:
                 if time.time() - start_time > 60 * timeout_minutes:
                     error = f"Timeout: server not ready after {timeout_minutes} minutes"
@@ -244,6 +262,9 @@ def _run_with_cache(network):
     cache_data = cache_manager.load_hashes(network)
     expected_hashes = cache_data["hashes"]
 
+    # Get the last block we need to verify (last block in cached hashes)
+    last_expected_block = expected_hashes[-1]["block_index"]
+
     # Prepare the server command (don't clear data dir)
     sh_counterparty_server, server_args, db_path, api_url = prepare(network, use_existing_data=True)
 
@@ -258,8 +279,10 @@ def _run_with_cache(network):
     rollback(sh_counterparty_server, rollback_block)
 
     # Catchup again - this should re-parse all the cached blocks
+    # Use min_block_index to ensure we wait for all expected blocks to be parsed
+    # (server_ready can be unreliable when backend is rate-limited)
     print("Catching up and verifying hashes...")
-    catchup(server_args, api_url)
+    catchup(server_args, api_url, min_block_index=last_expected_block)
 
     # Verify all hashes match
     cache_manager.verify_hashes(db_path, expected_hashes)
