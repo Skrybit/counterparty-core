@@ -54,6 +54,7 @@ counterparty-server start
 - Update PyO3 to 0.24.1
 - Eliminate 8-minute startup delay by storing event column in address_events table (startup time: 8+ min → 33s)
 - Add checkpoint for block 932500
+- Add interruptible sleep in Bitcoin core client for clean shutdown
 
 ## Performance & Memory
 

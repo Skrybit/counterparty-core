@@ -48,6 +48,18 @@ def should_retry():
     return True
 
 
+def interruptible_sleep(duration, check_interval=0.5):
+    """Sleep for duration seconds, but check for stop condition every check_interval seconds."""
+    elapsed = 0.0
+    while elapsed < duration:
+        if CurrentState().stopping():
+            return False  # Interrupted
+        sleep_time = min(check_interval, duration - elapsed)
+        time.sleep(sleep_time)
+        elapsed += sleep_time
+    return True  # Completed without interruption
+
+
 def get_json_response(response, retry=0):
     try:
         json_response = response.json()
@@ -61,7 +73,8 @@ def get_json_response(response, retry=0):
                 response.text,
                 stack_info=config.VERBOSE > 0,
             )
-            time.sleep(5)
+            if not interruptible_sleep(5):
+                raise exceptions.BitcoindRPCError("Shutdown requested during JSON retry") from e
             if retry < 5:
                 return get_json_response(response, retry=retry + 1)
         raise exceptions.BitcoindRPCError(  # noqa: B904
@@ -109,20 +122,26 @@ def rpc_call(payload, retry=0):
                     stack_info=config.VERBOSE > 0,
                 )
                 if should_retry():
-                    time.sleep(backoff_time)
+                    if not interruptible_sleep(backoff_time):
+                        raise exceptions.BitcoindRPCError(
+                            "Shutdown requested during rate limit backoff"
+                        )
                     continue
                 raise exceptions.BitcoindRPCError(str(response.status_code) + " " + response.reason)
             if response.status_code not in (200, 500):
                 raise exceptions.BitcoindRPCError(str(response.status_code) + " " + response.reason)
             break
-        except (Timeout, ReadTimeout, ConnectionError, ChunkedEncodingError):
+        except (Timeout, ReadTimeout, ConnectionError, ChunkedEncodingError) as e:
             logger.warning(
                 "Could not connect to backend at `%s`. (Attempt: %s)",
                 clean_url_for_log(url),
                 tries,
                 stack_info=config.VERBOSE > 0,
             )
-            time.sleep(5)
+            if not interruptible_sleep(5):
+                raise exceptions.BitcoindRPCError(
+                    "Shutdown requested during connection retry"
+                ) from e
         except Exception as e:  # pylint: disable=broad-except
             broken_error = e
             break
@@ -152,7 +171,8 @@ def rpc_call(payload, retry=0):
         if should_retry():
             # If Bitcoin Core takes more than `sys.getrecursionlimit() * 10 = 9970`
             # seconds to start, this'll hit the maximum recursion depth limit.
-            time.sleep(10)
+            if not interruptible_sleep(10):
+                raise exceptions.BitcoindRPCError("Shutdown requested during error retry")
             return rpc_call(payload, retry=retry + 1)
         raise exceptions.BitcoindRPCError(warning_message)
     else:
@@ -424,7 +444,8 @@ def wait_for_block(block_index):
             block_count,
             tip,
         )
-        time.sleep(10)
+        if not interruptible_sleep(10):
+            return  # Interrupted, exit early
         block_count = getblockcount()
 
 
