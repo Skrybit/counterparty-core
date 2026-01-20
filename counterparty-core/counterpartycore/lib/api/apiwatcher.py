@@ -4,7 +4,7 @@ import threading
 import time
 
 from counterpartycore.lib import config, exceptions
-from counterpartycore.lib.api import caches, dbbuilder
+from counterpartycore.lib.api import dbbuilder
 from counterpartycore.lib.parser import utxosinfo
 from counterpartycore.lib.utils import database
 from counterpartycore.lib.utils.helpers import format_duration
@@ -223,8 +223,8 @@ def update_address_events(state_db, event, no_cache=False):
             continue
         address = event_bindings[field]
         sql = """
-            INSERT INTO address_events (address, event_index, block_index)
-            VALUES (:address, :event_index, :block_index)
+            INSERT INTO address_events (address, event_index, block_index, event)
+            VALUES (:address, :event_index, :block_index, :event)
             """
         cursor.execute(
             sql,
@@ -232,10 +232,9 @@ def update_address_events(state_db, event, no_cache=False):
                 "address": address,
                 "event_index": event["message_index"],
                 "block_index": event["block_index"],
+                "event": event["event"],
             },
         )
-        if not no_cache:
-            caches.AddressEventsCache().insert(address, event["event"], event["message_index"])
         if utxosinfo.is_utxo_format(address):
             utxo_address = search_address_from_utxo(state_db, address)
             if utxo_address is not None:
@@ -245,12 +244,9 @@ def update_address_events(state_db, event, no_cache=False):
                         "address": utxo_address,
                         "event_index": event["message_index"],
                         "block_index": event["block_index"],
+                        "event": event["event"],
                     },
                 )
-                if not no_cache:
-                    caches.AddressEventsCache().insert(
-                        utxo_address, event["event"], event["message_index"]
-                    )
 
 
 def update_all_expiration(state_db, event):
@@ -417,6 +413,15 @@ def update_balances(state_db, event):
     if event["event"] not in ["DEBIT", "CREDIT"]:
         return
 
+    # Skip events that are already reflected in balances copied from ledger_db.
+    # This prevents double-counting after a state_db rollback when ledger_db
+    # has already reparsed ahead of the rollback point.
+    # See dbbuilder.record_balances_copied_block() for full explanation.
+    balances_copied_at_block = database.get_config_value(state_db, "BALANCES_COPIED_AT_BLOCK")
+    if balances_copied_at_block is not None:
+        if event["block_index"] <= int(balances_copied_at_block):
+            return  # Already accounted for in the copied balances
+
     cursor = state_db.cursor()
 
     event_bindings = get_event_bindings(event)
@@ -520,6 +525,16 @@ def update_last_parsed_events(state_db, event):
     cursor = state_db.cursor()
     cursor.execute(sql, event)
     update_last_parsed_events_cache(state_db, event)
+
+    # Clear the BALANCES_COPIED_AT_BLOCK marker once we've caught up.
+    # This marker was set during rollback to prevent double-counting of
+    # CREDIT/DEBIT events. Once we've parsed past the copied block,
+    # all future events should be applied normally.
+    if event["event"] == "BLOCK_PARSED":
+        balances_copied_at_block = database.get_config_value(state_db, "BALANCES_COPIED_AT_BLOCK")
+        if balances_copied_at_block is not None:
+            if event["block_index"] >= int(balances_copied_at_block):
+                database.set_config_value(state_db, "BALANCES_COPIED_AT_BLOCK", None)
 
 
 def get_last_parsed_event_index(state_db, no_cache=False):
@@ -683,5 +698,8 @@ class APIWatcher(threading.Thread):
     def stop(self):
         logger.info("Stopping API Watcher thread...")
         self.stop_event.set()
-        self.join()
-        logger.info("API Watcher thread stopped.")
+        self.join(timeout=5)
+        if self.is_alive():
+            logger.warning("API Watcher thread did not stop in time, continuing...")
+        else:
+            logger.info("API Watcher thread stopped.")

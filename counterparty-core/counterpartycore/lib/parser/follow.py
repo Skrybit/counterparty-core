@@ -33,7 +33,10 @@ RAW_MEMPOOL = []
 
 
 def get_zmq_notifications_addresses():
-    zmq_notification = backend.bitcoind.get_zmq_notifications()
+    try:
+        zmq_notification = backend.bitcoind.get_zmq_notifications()
+    except exceptions.BitcoindRPCError as e:
+        raise exceptions.BitcoindZMQError("Error getting ZMQ notifications") from e
 
     if len(zmq_notification) == 0:
         raise exceptions.BitcoindZMQError("Bitcoin Core ZeroMQ notifications are not enabled.")
@@ -315,17 +318,33 @@ class BlockchainWatcher:
             self.loop.close()
 
     def stop(self):
-        logger.debug("Stopping blockchain watcher...")
-        # Cancel the handle task
-        self.stop_event.set()
-        self.task.cancel()
-        self.loop.stop()
-        # Clean up ZMQ context
-        self.zmq_context.destroy()
-        # Stop mempool parser
-        if self.mempool_parser:
-            self.mempool_parser.stop()
-        logger.debug("Blockchain watcher stopped.")
+        # Protect entire shutdown from KeyboardInterrupt
+        try:
+            logger.debug("Stopping blockchain watcher...")
+            # Signal the handle loop to stop
+            self.stop_event.set()
+            # Cancel the handle task
+            if self.task and not self.task.done():
+                self.task.cancel()
+            # Stop the event loop (thread-safe in Python 3.9+)
+            if self.loop.is_running():
+                self.loop.call_soon_threadsafe(self.loop.stop)
+            # Clean up ZMQ sockets and context
+            try:
+                # Close sockets first with linger=0 to avoid blocking
+                self.zmq_sub_socket_sequence.setsockopt(zmq.LINGER, 0)
+                self.zmq_sub_socket_sequence.close()
+                self.zmq_sub_socket_rawblock.setsockopt(zmq.LINGER, 0)
+                self.zmq_sub_socket_rawblock.close()
+                self.zmq_context.term()
+            except Exception as e:  # pylint: disable=broad-except
+                logger.debug("Error cleaning up ZMQ: %s", e)
+            # Stop mempool parser
+            if self.mempool_parser:
+                self.mempool_parser.stop()
+            logger.debug("Blockchain watcher stopped.")
+        except KeyboardInterrupt:
+            pass  # Ignore repeated Ctrl+C during shutdown
 
 
 def get_raw_mempool(db):
@@ -379,16 +398,21 @@ class RawMempoolParser(threading.Thread):
         )
 
     def stop(self):
-        logger.debug("Stopping RawMempoolParser...")
-        self.db.interrupt()
-        # if self.is_alive():
-        self.stop_event.set()
-        self.join()
+        try:
+            logger.debug("Stopping RawMempoolParser...")
+            self.db.interrupt()
+            self.stop_event.set()
+            self.join(timeout=5)  # Don't wait forever
+        except KeyboardInterrupt:
+            pass  # Ignore repeated Ctrl+C during shutdown
 
 
 class NotSupportedTransactionsCache(metaclass=helpers.SingletonMeta):
     def __init__(self):
-        self.not_suppported_txs = []
+        # Use set for O(1) lookups instead of O(n) list
+        self.not_suppported_txs = set()
+        # Keep a list for ordering (for backup/restore)
+        self._ordered_txs = []
         self.cache_path = os.path.join(
             config.CACHE_DIR, f"not_supported_tx_cache.{config.NETWORK_NAME}.txt"
         )
@@ -397,25 +421,30 @@ class NotSupportedTransactionsCache(metaclass=helpers.SingletonMeta):
     def restore(self):
         if os.path.exists(self.cache_path):
             with open(self.cache_path, "r", encoding="utf-8") as f:
-                self.not_suppported_txs = [line.strip() for line in f]
+                self._ordered_txs = [line.strip() for line in f]
+                self.not_suppported_txs = set(self._ordered_txs)
             logger.debug(
                 "Restored %d not supported transactions from cache", len(self.not_suppported_txs)
             )
 
     def backup(self):
         with open(self.cache_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(self.not_suppported_txs[-200000:]))  # limit to 200k txs
+            f.write("\n".join(self._ordered_txs))
         logger.trace(
             f"Backed up {len(self.not_suppported_txs)} not supported transactions to cache"
         )
 
     def clear(self):
-        self.not_suppported_txs = []
+        self.not_suppported_txs = set()
+        self._ordered_txs = []
         if os.path.exists(self.cache_path):
             os.remove(self.cache_path)
 
     def add(self, more_not_supported_txs):
-        self.not_suppported_txs += more_not_supported_txs
+        for tx in more_not_supported_txs:
+            if tx not in self.not_suppported_txs:
+                self.not_suppported_txs.add(tx)
+                self._ordered_txs.append(tx)
         self.backup()
 
     def is_not_supported(self, tx_hash):

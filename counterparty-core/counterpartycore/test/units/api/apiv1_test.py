@@ -436,6 +436,7 @@ def test_get_tx_infos(apiv1_client, current_block_index, defaults):
         result = apiv1_client(
             "get_tx_info", {"tx_hex": tx_hex, "block_index": current_block_index}
         ).json
+        print(result)
         assert result["result"] == [
             defaults["addresses"][0],
             "",

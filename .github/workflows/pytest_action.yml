@@ -24,6 +24,10 @@ on:
       no_cov_report:
         type: boolean
         default: false
+      integration_cache_network:
+        type: string
+        default: ""
+        description: "Network for integration test caching (signet, testnet4). Leave empty to disable caching."
 
 jobs:
   pytest:
@@ -33,6 +37,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Restore integration cache
+        if: inputs.integration_cache_network != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/counterparty-integration-cache/${{ inputs.integration_cache_network }}
+          # Cache key version: increment to invalidate corrupted caches
+          key: integration-v2-${{ inputs.integration_cache_network }}-${{ github.run_id }}
+          restore-keys: |
+            integration-v2-${{ inputs.integration_cache_network }}-
+
       - name: Set up Python
         uses: actions/setup-python@v3
         with:
@@ -70,6 +84,14 @@ jobs:
           if [ "${{ !inputs.no_cov_report }}" = "true" ]; then
             mv .coverage ../
           fi
+
+      - name: Save integration cache
+        if: always() && inputs.integration_cache_network != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/counterparty-integration-cache/${{ inputs.integration_cache_network }}
+          # Cache key version: increment to invalidate corrupted caches
+          key: integration-v2-${{ inputs.integration_cache_network }}-${{ github.run_id }}
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5

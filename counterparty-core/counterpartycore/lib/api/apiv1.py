@@ -477,8 +477,11 @@ class APIStatusPoller(threading.Thread):
     def stop(self):
         logger.info("Stopping API v1 Status Poller thread...")
         self.stop_event.set()
-        self.join()
-        logger.info("API v1 Status Poller thread stopped.")
+        self.join(timeout=5)
+        if self.is_alive():
+            logger.warning("API v1 Status Poller thread did not stop in time, continuing...")
+        else:
+            logger.info("API v1 Status Poller thread stopped.")
 
     def run(self):
         logger.info("Starting v1 API Status Poller thread...")
@@ -1244,8 +1247,11 @@ class APIServer(threading.Thread):
         logger.info("Stopping API Server v1 thread...")
         if self.server:
             self.server.shutdown()
-        self.join()
-        logger.info("API Server v1 thread stopped.")
+        self.join(timeout=5)
+        if self.is_alive():
+            logger.warning("API Server v1 thread did not stop in time, continuing...")
+        else:
+            logger.info("API Server v1 thread stopped.")
 
     def run(self):
         logger.info("Starting API Server v1 thread...")

@@ -3,6 +3,7 @@ import time
 
 from counterpartycore.lib import config
 from counterpartycore.lib.ledger.currentstate import CurrentState
+from counterpartycore.lib.parser.gettxinfo import KNOWN_SOURCES
 from counterpartycore.lib.utils import database, helpers
 
 logger = logging.getLogger(config.LOGGER_NAME)
@@ -10,12 +11,17 @@ logger = logging.getLogger(config.LOGGER_NAME)
 
 class AssetCache(metaclass=helpers.SingletonMeta):
     def __init__(self, db) -> None:
+        # Store db reference for lazy loading on cache miss
+        self.db = db
+        # Load all assets into memory (unbounded dict)
+        # AssetCache LRU caused 10x slowdown on mainnet: 56MB memory savings not worth it
         self.assets = {}
+        # Keep full dicts for supply calculations (these are just numbers, much smaller)
         self.assets_total_issued = {}
         self.assets_total_destroyed = {}
         start = time.time()
         logger.debug("Initialising asset cache...")
-        # asset info
+        # asset info - load all assets
         sql = """
             SELECT *, MAX(rowid) AS rowid FROM issuances
             WHERE status = 'valid'
@@ -23,14 +29,13 @@ class AssetCache(metaclass=helpers.SingletonMeta):
         """
         cursor = db.cursor()
         all_assets = cursor.execute(sql)
-        self.assets = {}
         for asset in all_assets:
             del asset["rowid"]
             if asset["asset_longname"] is not None:
                 self.assets[asset["asset_longname"]] = asset
             self.assets[asset["asset"]] = asset
         duration = time.time() - start
-        # asset total issued
+        # asset total issued - load fully (needed for supply calculations)
         sql = """
             SELECT SUM(quantity) AS total, asset
             FROM issuances
@@ -42,7 +47,7 @@ class AssetCache(metaclass=helpers.SingletonMeta):
         self.assets_total_issued = {}
         for count in all_counts:
             self.assets_total_issued[count["asset"]] = count["total"]
-        # asset total destroyed
+        # asset total destroyed - load fully (needed for supply calculations)
         sql = """
             SELECT SUM(quantity) AS total, asset
             FROM destructions
@@ -55,7 +60,35 @@ class AssetCache(metaclass=helpers.SingletonMeta):
         for count in all_counts:
             self.assets_total_destroyed[count["asset"]] = count["total"]
 
-        logger.debug("Asset cache initialised in %.2f seconds", duration)
+        logger.debug(
+            "Asset cache initialised in %.2f seconds (loaded=%d assets)",
+            duration,
+            len(self.assets),
+        )
+
+    def get_asset(self, asset_name):
+        """Get asset info from cache, falling back to DB on cache miss."""
+        # Check cache first
+        if asset_name in self.assets:
+            return self.assets[asset_name]
+
+        # Cache miss - query database
+        cursor = self.db.cursor()
+        name_field = "asset_longname" if "." in asset_name else "asset"
+        sql = f"""
+            SELECT * FROM issuances
+            WHERE ({name_field} = ? AND status = 'valid')
+            ORDER BY tx_index DESC
+            LIMIT 1
+        """  # nosec B608  # noqa: S608
+        cursor.execute(sql, (asset_name,))
+        result = cursor.fetchone()
+
+        if result:
+            # Cache the result for future lookups
+            self.assets[asset_name] = result
+
+        return result
 
     def add_issuance(self, issuance):
         if "rowid" in issuance:
@@ -82,32 +115,141 @@ class AssetCache(metaclass=helpers.SingletonMeta):
 
 class UTXOBalancesCache(metaclass=helpers.SingletonMeta):
     def __init__(self, db):
+        # Store db reference for lazy loading on cache miss
+        self.db = db
         logger.debug("Initialising utxo balances cache...")
-        sql = "SELECT utxo, asset, quantity, MAX(rowid) FROM balances WHERE utxo IS NOT NULL GROUP BY utxo, asset"
+        # Simple dict containing only UTXOs that currently have a balance
+        # Size bounded by active UTXO set with balances (not historical)
+        self.utxos_with_balance = {}
+
         cursor = db.cursor()
+
+        # Load UTXOs with balance from the balances table
+        sql = "SELECT utxo, asset, quantity, MAX(rowid) FROM balances WHERE utxo IS NOT NULL GROUP BY utxo, asset"
         cursor.execute(sql)
         utxo_balances = cursor.fetchall()
-        self.utxos_with_balance = {}
         for utxo_balance in utxo_balances:
             self.utxos_with_balance[utxo_balance["utxo"]] = True
-        # to not breack `txlist_hash`es we rebuild the cache in the same way it is built during transaction parsing:
-        # invalid attachs are added to the cache (see gettxinfo.update_utxo_balances_cache())
+
+        # Add destinations from invalid attachs
+        # (see gettxinfo.update_utxo_balances_cache())
         sql = "SELECT tx_hash, utxos_info FROM transactions_with_status WHERE valid IS FALSE AND transaction_type = ?"
         cursor.execute(sql, ("attach",))
         invalid_attach_transactions = cursor.fetchall()
         for transaction in invalid_attach_transactions:
             utxos_info = transaction["utxos_info"].split(" ")
-            if utxos_info[1] != "":
+            if len(utxos_info) >= 2 and utxos_info[1] != "":
                 self.utxos_with_balance[utxos_info[1]] = True
 
+        # Add destinations from KNOWN_SOURCES transactions and their descendants
+        # KNOWN_SOURCES forces a source even when the source has no balance in the balances table,
+        # which adds the destination to cache during parsing but not to the balances table.
+        # We must follow the chain of transactions that consume these destinations.
+        self._add_known_sources_descendants(cursor)
+
+        logger.debug(
+            "UTXO balances cache initialised (loaded=%d)",
+            len(self.utxos_with_balance),
+        )
+
+    def _add_known_sources_descendants(self, cursor):
+        """Add to cache the destinations from KNOWN_SOURCES and all descendant transactions."""
+        pending_utxos = set()
+
+        # Start with destinations from KNOWN_SOURCES
+        for tx_hash, source in KNOWN_SOURCES.items():
+            if source != "":
+                tx = cursor.execute(
+                    "SELECT utxos_info, transaction_type FROM transactions WHERE tx_hash = ?",
+                    (tx_hash,),
+                ).fetchone()
+                if tx:
+                    utxos_info = tx["utxos_info"].split(" ")
+                    if len(utxos_info) >= 2 and utxos_info[1] != "":
+                        self.utxos_with_balance[utxos_info[1]] = True
+                        pending_utxos.add(utxos_info[1])
+
+        # Follow the chain: find transactions that consume these UTXOs
+        processed = set()
+        while pending_utxos:
+            utxo = pending_utxos.pop()
+            if utxo in processed:
+                continue
+            processed.add(utxo)
+
+            # Find transactions where this UTXO is a source
+            # utxos_info format: "sources destination num_outputs [op_return_index]"
+            # We search for transactions where utxos_info starts with this UTXO
+            txs = cursor.execute(
+                """SELECT utxos_info, transaction_type FROM transactions
+                   WHERE transaction_type IN ('utxomove', 'attach', 'detach')
+                   AND utxos_info LIKE ?
+                   ORDER BY tx_index""",
+                (f"{utxo}%",),
+            ).fetchall()
+
+            for tx in txs:
+                utxos_info = tx["utxos_info"].split(" ")
+                transaction_type = tx["transaction_type"]
+                if len(utxos_info) >= 2:
+                    sources = utxos_info[0].split(",")
+                    if utxo in sources:
+                        # This UTXO is consumed, remove from cache
+                        self.utxos_with_balance.pop(utxo, None)
+                        # Add destination if not a detach
+                        if utxos_info[1] != "" and transaction_type != "detach":
+                            self.utxos_with_balance[utxos_info[1]] = True
+                            if utxos_info[1] not in processed:
+                                pending_utxos.add(utxos_info[1])
+
     def has_balance(self, utxo):
-        return utxo in self.utxos_with_balance
+        # Check cache first
+        if utxo in self.utxos_with_balance:
+            return self.utxos_with_balance[utxo]
+
+        # Cache miss - query database
+        cursor = self.db.cursor()
+        cursor.execute(
+            "SELECT 1 FROM balances WHERE utxo = ? AND quantity > 0 LIMIT 1",
+            (utxo,),
+        )
+        result = cursor.fetchone() is not None
+
+        # Only cache positive results to avoid unbounded memory growth
+        # (negative results from DB queries are not cached - they would accumulate indefinitely)
+        if result:
+            self.utxos_with_balance[utxo] = True
+        return result
 
     def add_balance(self, utxo):
         self.utxos_with_balance[utxo] = True
 
     def remove_balance(self, utxo):
-        self.utxos_with_balance.pop(utxo, None)
+        # Mark as no balance (needed during parsing before DB is updated)
+        self.utxos_with_balance[utxo] = False
+
+    def cleanup_spent_utxos(self):
+        """
+        Remove entries marked as spent (False) from the cache.
+        Should be called after each block is parsed to prevent unbounded memory growth.
+        """
+        # Build list of keys to remove (can't modify dict during iteration)
+        spent_utxos = [
+            utxo for utxo, has_balance in self.utxos_with_balance.items() if not has_balance
+        ]
+        for utxo in spent_utxos:
+            del self.utxos_with_balance[utxo]
+        if spent_utxos:
+            logger.trace("Cleaned up %d spent UTXOs from cache", len(spent_utxos))
+
+    @classmethod
+    def cleanup_if_exists(cls):
+        """
+        Clean up spent UTXOs only if the cache singleton already exists.
+        This avoids creating the singleton with a potentially stale DB connection.
+        """
+        if cls in helpers.SingletonMeta._instances:
+            helpers.SingletonMeta._instances[cls].cleanup_spent_utxos()
 
 
 class OrdersCache(metaclass=helpers.SingletonMeta):

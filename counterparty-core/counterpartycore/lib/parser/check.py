@@ -13,14 +13,14 @@ logger = logging.getLogger(config.LOGGER_NAME)
 
 
 def consensus_hash(db, field, previous_consensus_hash, content):
-    assert field in ("ledger_hash", "txlist_hash", "messages_hash")
+    assert field in ("ledger_hash", "txlist_hash", "messages_hash"), "Invalid field"
 
     cursor = db.cursor()
     block_index = CurrentState().current_block_index()
 
     # Initialise previous hash on first block.
     if block_index <= config.BLOCK_FIRST:
-        assert not previous_consensus_hash
+        assert not previous_consensus_hash, "Previous consensus hash is not None"
         previous_consensus_hash = dhash_string(checkpoints.CONSENSUS_HASH_SEED)
 
     # Get previous hash.

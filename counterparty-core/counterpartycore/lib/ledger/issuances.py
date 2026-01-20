@@ -414,7 +414,7 @@ def get_last_issuance_no_cache(db, asset):
 
 
 def get_last_issuance(db, asset):
-    return AssetCache(db).assets.get(asset)
+    return AssetCache(db).get_asset(asset)
 
 
 def get_asset(db, asset):

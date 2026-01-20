@@ -53,13 +53,22 @@ class BlockchainMock(metaclass=helpers.SingletonMeta):
         ]
 
     def get_vin_info(self, vin):
-        if vin["hash"] == "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff":
+        if vin["hash"] in self.source_by_txid:
+            source = self.source_by_txid[vin["hash"]]
+        elif vin["hash"] == "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff":
             source = self.source_by_txid[list(self.source_by_txid.keys())[0]]
         else:
-            source = self.source_by_txid[vin["hash"]]
+            raise KeyError(f"txid not found: {vin['hash']}")
         value = int(10 * config.UNIT)
+
+        construct_params = {}
+        if multisig.is_multisig(source):
+            _signatures_required, addresses, _signatures_possible = multisig.extract_array(source)
+            pubkeys = [DEFAULT_PARAMS["pubkey"][addr] for addr in addresses]
+            construct_params["pubkeys"] = ",".join(pubkeys)
+
         script_pub_key = composer.address_to_script_pub_key(
-            source, network=config.NETWORK_NAME
+            source, construct_params=construct_params, network=config.NETWORK_NAME
         ).to_hex()
         is_segwit = composer.is_segwit_output(script_pub_key)
         return value, script_pub_key, is_segwit

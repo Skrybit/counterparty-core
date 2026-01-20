@@ -2332,3 +2332,79 @@ def test_compose_taproot(ledger_db, defaults):
         },
         "name": "send",
     }
+
+
+# =============================================================================
+# Sub-1 sat/vByte Fee Tests
+# =============================================================================
+
+
+def test_sub_sat_per_vbyte_fee_rounding():
+    """Test that sub-1 sat/vByte fees use math.ceil for proper rounding."""
+    import math
+
+    test_cases = [
+        # (sat_per_vbyte, vsize, expected_fee)
+        (0.5, 101, 51),  # 50.5 -> ceil = 51
+        (0.1, 5, 1),  # 0.5 -> ceil = 1 (would be 0 with int())
+        (0.25, 3, 1),  # 0.75 -> ceil = 1
+        (1.5, 101, 152),  # 151.5 -> ceil = 152
+    ]
+
+    for sat_per_vbyte, vsize, expected_fee in test_cases:
+        assert math.ceil(sat_per_vbyte * vsize) == expected_fee
+
+
+def test_prepare_fee_parameters_accepts_sub_sat_per_vbyte():
+    """Test that prepare_fee_parameters accepts sub-1 sat/vByte values."""
+    for rate in [0.01, 0.1, 0.5]:
+        exact_fee, sat_per_vbyte, max_fee = composer.prepare_fee_parameters({"sat_per_vbyte": rate})
+        assert sat_per_vbyte == rate
+
+
+def test_fee_per_kb_to_sat_per_vbyte_conversion():
+    """Test that fee_per_kb converts to fractional sat/vByte correctly."""
+    assert composer.fee_per_kb_to_sat_per_vbyte(500) == 500 / 1024  # ~0.488 sat/vByte
+    assert composer.fee_per_kb_to_sat_per_vbyte(1024) == 1.0
+    assert composer.fee_per_kb_to_sat_per_vbyte(512) == 0.5
+
+
+@pytest.mark.parametrize("sat_per_vbyte", [0.1, 0.5, 0.9])
+def test_compose_transaction_sub_sat_per_vbyte(ledger_db, defaults, sat_per_vbyte):
+    """Test composing transactions with various sub-1 sat/vByte rates."""
+    import math
+
+    params = {
+        "source": defaults["addresses"][0],
+        "destination": defaults["addresses"][1],
+        "asset": "XCP",
+        "quantity": defaults["small"],
+    }
+    result = composer.compose_transaction(
+        ledger_db, "send", params, {"sat_per_vbyte": sat_per_vbyte, "verbose": True}
+    )
+
+    # Verify transaction deserializes correctly
+    decoded_tx = deserialize.deserialize_tx(result["rawtransaction"], parse_vouts=True)
+    assert "vin" in decoded_tx and "vout" in decoded_tx
+
+    # Verify fee uses ceil rounding
+    vsize = result["signed_tx_estimated_size"]["adjusted_vsize"]
+    assert result["btc_fee"] >= math.ceil(sat_per_vbyte * vsize)
+    assert result["btc_in"] == result["btc_out"] + result["btc_change"] + result["btc_fee"]
+
+
+def test_compose_transaction_sub_sat_per_vbyte_with_max_fee(ledger_db, defaults):
+    """Test sub-1 sat/vByte respects max_fee constraint."""
+    params = {
+        "source": defaults["addresses"][0],
+        "destination": defaults["addresses"][1],
+        "asset": "XCP",
+        "quantity": defaults["small"],
+    }
+    result = composer.compose_transaction(
+        ledger_db, "send", params, {"sat_per_vbyte": 0.5, "max_fee": 100, "verbose": True}
+    )
+
+    assert result["btc_fee"] <= 100
+    assert result["btc_fee"] > 0

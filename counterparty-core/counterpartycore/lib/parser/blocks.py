@@ -316,6 +316,9 @@ def parse_block(
 
     The unused arguments `ledger_hash` and `txlist_hash` are for the test suite.
     """
+    # Timing instrumentation for performance analysis
+    block_start = time.perf_counter()
+    timings = {}
 
     # Get block transactions
     cursor = db.cursor()
@@ -333,20 +336,33 @@ def parse_block(
     ledger.currentstate.ConsensusHashBuilder().reset()
 
     if block_index != config.MEMPOOL_BLOCK_INDEX:
-        assert block_index == CurrentState().current_block_index()
+        assert block_index == CurrentState().current_block_index(), "Block index mismatch"
 
     # Expire orders, bets and rps.
+    t0 = time.perf_counter()
     order.expire(db, block_index)
+    timings["order.expire"] = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
     bet.expire(db, block_index, block_time)
+    timings["bet.expire"] = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
     rps.expire(db, block_index)
+    timings["rps.expire"] = time.perf_counter() - t0
 
     # Close dispensers
+    t0 = time.perf_counter()
     dispenser.close_pending(db, block_index)
+    timings["dispenser.close_pending"] = time.perf_counter() - t0
 
     # Fairminters operations
+    t0 = time.perf_counter()
     fairminter.before_block(db, block_index)
+    timings["fairminter.before_block"] = time.perf_counter() - t0
 
     txlist = []
+    t0 = time.perf_counter()
     for tx in transactions:
         try:
             parse_tx(db, tx)
@@ -358,9 +374,23 @@ def parse_block(
             logger.warning("ParseTransactionError for tx %s: %s", tx["tx_hash"], e)
             raise e
             # pass
+    timings["parse_transactions"] = time.perf_counter() - t0
 
     # Fairminters operations
+    t0 = time.perf_counter()
     fairminter.after_block(db, block_index)
+    timings["fairminter.after_block"] = time.perf_counter() - t0
+
+    # Log timing breakdown
+    block_duration = time.perf_counter() - block_start
+    timing_str = ", ".join(f"{k}={v:.3f}s" for k, v in sorted(timings.items(), key=lambda x: -x[1]))
+    logger.debug(
+        "Block %s parsed (%.2fs, %d txs): %s",
+        block_index,
+        block_duration,
+        len(transactions),
+        timing_str,
+    )
 
     if block_index != config.MEMPOOL_BLOCK_INDEX:
         # Calculate consensus hashes.
@@ -416,6 +446,9 @@ def parse_block(
             },
         )
 
+        # Clean up spent UTXOs from cache to prevent unbounded memory growth
+        ledger.caches.UTXOBalancesCache.cleanup_if_exists()
+
         cursor.close()
 
         return new_ledger_hash, new_txlist_hash, new_messages_hash
@@ -425,7 +458,7 @@ def parse_block(
 
 
 def list_tx(db, block_hash, block_index, block_time, tx_hash, tx_index, decoded_tx):
-    assert isinstance(tx_hash, str)
+    assert isinstance(tx_hash, str), "tx_hash is not a string"
     CurrentState().set_current_tx_hash(tx_hash)
     cursor = db.cursor()
 
@@ -442,7 +475,7 @@ def list_tx(db, block_hash, block_index, block_time, tx_hash, tx_index, decoded_
             CurrentState().set_current_tx_hash(None)
             return tx_index
     else:
-        assert block_index == CurrentState().current_block_index()
+        assert block_index == CurrentState().current_block_index(), "Unexpected block index"
 
     if (
         (  # pylint: disable=too-many-boolean-expressions
@@ -679,7 +712,6 @@ def get_next_tx_index(db):
         )
     )
     if txes:
-        assert len(txes) == 1
         tx_index = txes[0]["tx_index"] + 1
     else:
         tx_index = 0
@@ -758,9 +790,11 @@ def parse_new_block(db, decoded_block, tx_index=None):
 
     # Sanity checks
     if decoded_block["block_index"] != config.BLOCK_FIRST:
-        assert previous_block["ledger_hash"] is not None
-        assert previous_block["txlist_hash"] is not None
-    assert previous_block["block_index"] == decoded_block["block_index"] - 1
+        assert previous_block["ledger_hash"] is not None, "Previous block ledger hash is None"
+        assert previous_block["txlist_hash"] is not None, "Previous block txlist hash is None"
+    assert previous_block["block_index"] == decoded_block["block_index"] - 1, (
+        "Previous block index mismatch"
+    )
 
     with db:  # ensure all the block or nothing
         logger.info("Block %s", decoded_block["block_index"], extra={"bold": True})
@@ -852,20 +886,27 @@ def check_database_version(db):
 
 def start_rsfetcher():
     fetcher = rsfetcher.RSFetcher()
-    try:
-        fetcher.start(CurrentState().current_block_index() + 1)
-    except exceptions.InvalidVersion as e1:
-        logger.error(e1)
-        raise e1
-    except Exception as e2:  # pylint: disable=broad-except
-        logger.warning("Failed to start RSFetcher (%s). Retrying in 5 seconds...", e2)
+    retry_delay = 5
+    max_delay = 60
+    while True:
         try:
-            fetcher.stop()
-        except Exception as e3:  # pylint: disable=broad-except
-            logger.debug("Failed to stop RSFetcher (%s).", e3)
-        time.sleep(5)
-        return start_rsfetcher()
-    return fetcher
+            fetcher.start(CurrentState().current_block_index() + 1)
+            return fetcher
+        except exceptions.InvalidVersion as e1:
+            logger.error(e1)
+            raise e1
+        except Exception as e2:  # pylint: disable=broad-except
+            logger.warning(
+                "Failed to start RSFetcher (%s). Retrying in %s seconds...",
+                e2,
+                retry_delay,
+            )
+            try:
+                fetcher.stop()
+            except Exception as e3:  # pylint: disable=broad-except
+                logger.debug("Failed to stop RSFetcher (%s).", e3)
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, max_delay)
 
 
 def create_events_indexes(db):
@@ -947,17 +988,17 @@ def catch_up(db):
             logger.debug("Block %s fetched. (%.6fs)", block_height, fetch_duration)
 
             # Check for gaps in the blockchain
-            assert block_height <= CurrentState().current_block_index() + 1
+            assert block_height <= CurrentState().current_block_index() + 1, (
+                "Block height is greater than current block index + 1"
+            )
 
             # Parse the current block
             tx_index, parsed_block_index = parse_new_block(db, decoded_block, tx_index=tx_index)
             # check if the parsed block is the expected one
             # if not that means a reorg happened
-            if parsed_block_index < block_height:
+            if parsed_block_index != block_height:
                 fetcher.stop()
                 fetcher = start_rsfetcher()
-            else:
-                assert parsed_block_index == block_height
 
             parsed_blocks += 1
             formatted_duration = helpers.format_duration(time.time() - start_time)

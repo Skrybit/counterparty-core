@@ -4,6 +4,7 @@ import decimal
 import logging
 import multiprocessing
 import os
+import signal
 import threading
 import time
 
@@ -22,7 +23,7 @@ from counterpartycore.lib.backend import rsfetcher
 from counterpartycore.lib.cli import bootstrap, log
 from counterpartycore.lib.ledger.backendheight import BackendHeight
 from counterpartycore.lib.ledger.currentstate import CurrentState
-from counterpartycore.lib.monitors import slack
+from counterpartycore.lib.monitors import memory_profiler, slack
 from counterpartycore.lib.parser import blocks, check, follow
 from counterpartycore.lib.utils import database, helpers
 
@@ -65,11 +66,14 @@ class AssetConservationChecker(threading.Thread):
         self.stop_event.set()
         if self.db is not None:
             self.db.interrupt()
-        self.join()
+        self.join(timeout=5)
+        if self.is_alive():
+            logger.warning("Asset Conservation Checker thread did not stop in time, continuing...")
+        else:
+            logger.info("Asset Conservation Checker thread stopped.")
         if self.db is not None:
             self.db.close()
             self.db = None
-        logger.info("Asset Conservation Checker thread stopped.")
 
 
 class CounterpartyServer(threading.Thread):
@@ -87,6 +91,8 @@ class CounterpartyServer(threading.Thread):
         self.backend_height_thread = None
         self.log_stream = log_stream
         self.periodic_profiler = None
+        self.mem_profiler = None
+        self.pool_monitor = None
         self.stop_when_ready = stop_when_ready
         self.stopped = False
 
@@ -99,7 +105,56 @@ class CounterpartyServer(threading.Thread):
         }
         logger.debug("Config: %s", custom_config)
 
+    def _start_pool_monitor(self):
+        """Start connection pool monitor for MainProcess."""
+        from counterpartycore.lib.utils.database import (
+            LedgerDBConnectionPool,
+            StateDBConnectionPool,
+        )
+
+        class MainProcessPoolMonitor(threading.Thread):
+            def __init__(self, interval_seconds=60):
+                super().__init__(name="MainProcessPoolMonitor", daemon=True)
+                self.interval = interval_seconds
+                self.stop_event = threading.Event()
+
+            def run(self):
+                while not self.stop_event.is_set():
+                    self.stop_event.wait(self.interval)
+                    if self.stop_event.is_set():
+                        break
+                    try:
+                        ledger_stats = LedgerDBConnectionPool().get_stats()
+                        state_stats = StateDBConnectionPool().get_stats()
+                        logger.info(
+                            "MAINPROCESS_POOL ledger=%d/%d (%.0f%%, peak=%d) state=%d/%d (%.0f%%, peak=%d)",
+                            ledger_stats["current"],
+                            ledger_stats["max"],
+                            ledger_stats["utilization"],
+                            ledger_stats["peak"],
+                            state_stats["current"],
+                            state_stats["max"],
+                            state_stats["utilization"],
+                            state_stats["peak"],
+                        )
+                    except Exception as e:
+                        logger.error("Error logging MainProcess pool stats: %s", e)
+
+            def stop(self):
+                self.stop_event.set()
+
+        monitor = MainProcessPoolMonitor(interval_seconds=60)
+        monitor.start()
+        return monitor
+
     def run_server(self):
+        # Start memory profiler if enabled via --memory-profile flag
+        if getattr(config, "MEMORY_PROFILE", False):
+            self.mem_profiler = memory_profiler.start_memory_profiler(
+                interval_seconds=60,
+                enable_tracemalloc=False,
+            )
+
         # download bootstrap if necessary
         if (
             not os.path.exists(config.DATABASE) and self.args.catch_up == "bootstrap"
@@ -120,6 +175,10 @@ class CounterpartyServer(threading.Thread):
         self.backend_height_thread.daemon = True
         self.backend_height_thread.start()
         CurrentState().set_backend_height_value(self.backend_height_thread.shared_backend_height)
+
+        # Start MainProcess connection pool monitor
+        logger.info("Starting MainProcess Connection Pool Monitor thread...")
+        self.pool_monitor = self._start_pool_monitor()
 
         # API Server v2
         self.api_stop_event = multiprocessing.Event()
@@ -184,6 +243,9 @@ class CounterpartyServer(threading.Thread):
             # import traceback
             # print(traceback.format_exc())
             logger.error("Error in server thread: %s", e, stack_info=True)
+        finally:
+            # Always signal main thread to stop when server thread ends
+            # This handles both exceptions and early returns (e.g., API startup failure)
             _thread.interrupt_main()
 
     def stop(self):
@@ -210,9 +272,17 @@ class CounterpartyServer(threading.Thread):
         if self.apiserver_v2:
             self.apiserver_v2.stop()
 
+        if self.pool_monitor:
+            logger.info("Stopping MainProcess Connection Pool Monitor thread...")
+            self.pool_monitor.stop()
+
         if self.periodic_profiler:
             logger.info("Stopping periodic profiler...")
             self.periodic_profiler.stop()
+
+        if self.mem_profiler:
+            logger.info("Stopping memory profiler...")
+            memory_profiler.stop_memory_profiler()
 
         self.stopped = True
         logger.info("Shutdown complete.")
@@ -220,13 +290,18 @@ class CounterpartyServer(threading.Thread):
 
 def start_all(args, log_stream=None, stop_when_ready=False):
     server = CounterpartyServer(args, log_stream, stop_when_ready=stop_when_ready)
+    shutdown_event = threading.Event()
+
+    def handle_sigterm(signum, frame):
+        logger.warning("SIGTERM received. Shutting down...")
+        shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
     try:
         server.start()
-        while True:
-            if not server.stopped:
-                server.join(1)
-            else:
-                break
+        while not shutdown_event.is_set() and not server.stopped:
+            server.join(1)
     except KeyboardInterrupt:
         logger.warning("Interruption received. Shutting down...")
     finally:

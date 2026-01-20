@@ -1,19 +1,20 @@
 import json
 
-from counterpartycore.lib.api import apiwatcher, caches, queries
+from counterpartycore.lib.api import apiwatcher, queries
 
 
-def test_address_events_cache(state_db, defaults, ledger_db):
-    cache = caches.AddressEventsCache()
-
-    cache_count = cache.cache_db.execute("SELECT COUNT(*) AS count FROM address_events").fetchone()[
-        "count"
-    ]
+def test_address_events(state_db, defaults, ledger_db):
+    """Test that address_events table includes the event column and queries work correctly"""
+    # Verify the event column exists in state_db.address_events
     state_db_count = state_db.execute("SELECT COUNT(*) AS count FROM address_events").fetchone()[
         "count"
     ]
 
-    assert cache_count == state_db_count
+    # Verify we can query by event type
+    state_db_with_event = state_db.execute(
+        "SELECT COUNT(*) AS count FROM address_events WHERE event IS NOT NULL"
+    ).fetchone()["count"]
+    assert state_db_with_event == state_db_count  # All rows should have event populated
 
     send_event = {
         "event": "SEND",
@@ -39,18 +40,22 @@ def test_address_events_cache(state_db, defaults, ledger_db):
 
     apiwatcher.update_address_events(state_db, send_event)
 
-    cache_count_after = cache.cache_db.execute(
-        "SELECT COUNT(*) AS count FROM address_events"
-    ).fetchone()["count"]
     state_db_count_after = state_db.execute(
         "SELECT COUNT(*) AS count FROM address_events"
     ).fetchone()["count"]
 
-    assert cache_count_after == state_db_count_after
-    assert cache_count_after == cache_count + 2
+    assert state_db_count_after == state_db_count + 2
+
+    # Verify event column was populated correctly
+    new_events = state_db.execute(
+        "SELECT * FROM address_events WHERE event_index = ?", (9999999,)
+    ).fetchall()
+    assert len(new_events) == 2
+    assert all(e["event"] == "SEND" for e in new_events)
 
     result = queries.get_events_by_addresses(
         ledger_db,
+        state_db,
         addresses=f"{defaults['addresses'][0]},{defaults['addresses'][1]}",
         event_name="SEND",
     )
@@ -73,7 +78,6 @@ def test_address_events_cache(state_db, defaults, ledger_db):
 
 def test_address_events_filtering_with_limit(state_db, defaults, ledger_db):
     """Test that event filtering is applied before pagination, not after"""
-    caches.AddressEventsCache()
     # Use a different address to avoid interference from other tests
     address = defaults["addresses"][5]
 
@@ -127,7 +131,7 @@ def test_address_events_filtering_with_limit(state_db, defaults, ledger_db):
 
     # Request 8 ENHANCED_SEND events with limit=8
     result = queries.get_events_by_addresses(
-        ledger_db, addresses=address, event_name="ENHANCED_SEND", limit=8
+        ledger_db, state_db, addresses=address, event_name="ENHANCED_SEND", limit=8
     )
 
     # Should return all 5 ENHANCED_SEND events we just created
@@ -137,7 +141,7 @@ def test_address_events_filtering_with_limit(state_db, defaults, ledger_db):
 
     # Request 3 ENHANCED_SEND events with limit=3
     result = queries.get_events_by_addresses(
-        ledger_db, addresses=address, event_name="ENHANCED_SEND", limit=3
+        ledger_db, state_db, addresses=address, event_name="ENHANCED_SEND", limit=3
     )
 
     # Should return exactly 3 ENHANCED_SEND events
@@ -146,7 +150,7 @@ def test_address_events_filtering_with_limit(state_db, defaults, ledger_db):
 
     # Request 8 OPEN_ORDER events with limit=8
     result = queries.get_events_by_addresses(
-        ledger_db, addresses=address, event_name="OPEN_ORDER", limit=8
+        ledger_db, state_db, addresses=address, event_name="OPEN_ORDER", limit=8
     )
 
     # Should return 8 OPEN_ORDER events (out of 10 we just created)

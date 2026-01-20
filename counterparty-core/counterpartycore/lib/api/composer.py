@@ -1018,7 +1018,7 @@ def prepare_inputs_and_change(db, source, outputs, unspent_list, construct_param
         needed_fee = sat_per_vbyte * adjusted_vsize
         if max_fee is not None:
             needed_fee = min(needed_fee, max_fee)
-        needed_fee = int(needed_fee)
+        needed_fee = math.ceil(needed_fee)
 
         # if change is enough for needed fee, add change output and break
         if change_amount >= needed_fee:

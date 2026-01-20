@@ -6,7 +6,6 @@ from typing import Literal
 
 from sentry_sdk import start_span as start_sentry_span
 
-from counterpartycore.lib.api import caches
 from counterpartycore.lib.utils.helpers import divide
 
 OrderStatus = Literal["all", "open", "expired", "filled", "cancelled"]
@@ -215,6 +214,9 @@ def select_rows(
                 where_field.append(f"{key[:-9]} IS NOT NULL")
             elif key.endswith("__null"):
                 where_field.append(f"{key[:-6]} IS NULL")
+            elif key.endswith("__nocase"):
+                where_field.append(f"{key[:-8]} = ? COLLATE NOCASE")
+                bindings.append(value)
             else:
                 if key in ADDRESS_FIELDS and len(value.split(",")) > 1:
                     where_field.append(f"{key} IN ({','.join(['?'] * len(value.split(',')))})")
@@ -331,7 +333,12 @@ def select_rows(
         result_count = cursor.fetchone()["count"]
 
     if result and len(result) > limit:
-        next_cursor = result[-1][cursor_field]
+        # Don't return a cursor when using sort or offset
+        # (cursor is ignored in those cases, so returning one would cause infinite loops)
+        if sort is not None or offset is not None:
+            next_cursor = None
+        else:
+            next_cursor = result[-1][cursor_field]
         result = result[:-1]
     else:
         next_cursor = None
@@ -866,6 +873,7 @@ def get_events_by_name(
 
 def get_events_by_addresses(
     ledger_db,
+    state_db,
     addresses: str,
     event_name: str = None,
     cursor: int = None,
@@ -884,7 +892,7 @@ def get_events_by_addresses(
     if event_name:
         where[0]["event__in"] = event_name.split(",")
     events = select_rows(
-        caches.AddressEventsCache().cache_db,
+        state_db,
         "address_events",
         where=where,
         cursor_field="event_index",
@@ -1570,7 +1578,7 @@ def get_issuances_by_asset(
     where = prepare_issuance_where(
         asset_events, {"asset": asset.upper(), "status": "valid"}
     ) + prepare_issuance_where(
-        asset_events, {"UPPER(asset_longname)": asset.upper(), "status": "valid"}
+        asset_events, {"asset_longname__nocase": asset.upper(), "status": "valid"}
     )
     return select_rows(
         ledger_db,
@@ -1882,7 +1890,7 @@ def get_sweeps_by_address(
 def get_address_balances(
     state_db,
     address: str,
-    type: BalanceType = all,  # pylint: disable=W0622
+    type: BalanceType = "all",  # pylint: disable=W0622
     cursor: int = None,
     limit: int = 100,
     offset: int = None,
@@ -2128,10 +2136,10 @@ def get_balances_by_address_and_asset(
     ]
     if type == "utxo":
         where.pop(0)
-        where.pop(1)
+        where.pop(0)  # pop twice to remove first two elements
     elif type == "address":
-        where.pop(2)
-        where.pop(3)
+        where.pop()  # pop last element (index 3)
+        where.pop()  # pop new last element (was index 2)
 
     return select_rows(
         state_db,
@@ -2577,7 +2585,7 @@ def get_asset(state_db, asset: str):
     Returns an asset by its name
     :param str asset: The name of the asset to return (e.g. $ASSET_1)
     """
-    where = [{"asset": asset.upper()}, {"UPPER(asset_longname)": asset.upper()}]
+    where = [{"asset": asset.upper()}, {"asset_longname__nocase": asset.upper()}]
     return select_row(
         state_db,
         "assets_info",
