@@ -74,9 +74,7 @@ def get_json_response(response, retry=0):
                 stack_info=config.VERBOSE > 0,
             )
             if not interruptible_sleep(5):
-                raise exceptions.BitcoindRPCError(
-                    "Shutdown requested during JSON retry"
-                ) from e
+                raise exceptions.BitcoindRPCError("Shutdown requested during JSON retry") from e
             if retry < 5:
                 return get_json_response(response, retry=retry + 1)
         raise exceptions.BitcoindRPCError(  # noqa: B904
@@ -125,7 +123,9 @@ def rpc_call(payload, retry=0):
                 )
                 if should_retry():
                     if not interruptible_sleep(backoff_time):
-                        raise exceptions.BitcoindRPCError("Shutdown requested during rate limit backoff")
+                        raise exceptions.BitcoindRPCError(
+                            "Shutdown requested during rate limit backoff"
+                        )
                     continue
                 raise exceptions.BitcoindRPCError(str(response.status_code) + " " + response.reason)
             if response.status_code not in (200, 500):
