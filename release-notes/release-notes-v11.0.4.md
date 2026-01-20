@@ -1,6 +1,6 @@
 # Release Notes - Counterparty Core v11.0.4 (2026-01-20)
 
-This release fixes a bug in the UTXO balances cache rebuilding where destinations from `KNOWN_SOURCES` transactions were not properly restored after a node restart, causing some `utxomove` transactions to go undetected. A rollback to block 926,807 will occur automatically on mainnet.
+This release fixes a bug in UTXO balances cache rebuilding that caused some `utxomove` transactions to go undetected after a node restart. It also delivers significant performance improvements: startup time has been reduced from 8+ minutes to 33 seconds, and Kubernetes shutdown time from 182 seconds to 21 seconds. New CLI options (`--db-connection-pool-size`, `--db-max-connections`, `--memory-profile`) provide better control over database connections and memory monitoring. The API has been optimized with new indexes and faster case-insensitive asset queries. A rollback to block 926,807 will occur automatically on mainnet.
 
 # Upgrading
 
