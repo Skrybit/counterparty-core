@@ -186,11 +186,11 @@ class RSFetcher(metaclass=helpers.SingletonMeta):
             except Exception as e:  # pylint: disable=broad-except
                 if str(e) == "Stopped error":
                     logger.warning(
-                        "RSFetcher thread found stopped due to an error. Restarting in 5 seconds..."
+                        "RSFetcher thread found stopped due to an error. "
+                        "Stopping prefetcher to allow outer restart..."
                     )
-                    self.stopped_event.wait(timeout=5)
+                    self.stopped_event.set()
                     self.running = False
-                    self.restart(no_wait=True)
                     return
                 else:
                     raise e

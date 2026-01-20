@@ -886,20 +886,27 @@ def check_database_version(db):
 
 def start_rsfetcher():
     fetcher = rsfetcher.RSFetcher()
-    try:
-        fetcher.start(CurrentState().current_block_index() + 1)
-    except exceptions.InvalidVersion as e1:
-        logger.error(e1)
-        raise e1
-    except Exception as e2:  # pylint: disable=broad-except
-        logger.warning("Failed to start RSFetcher (%s). Retrying in 5 seconds...", e2)
+    retry_delay = 5
+    max_delay = 60
+    while True:
         try:
-            fetcher.stop()
-        except Exception as e3:  # pylint: disable=broad-except
-            logger.debug("Failed to stop RSFetcher (%s).", e3)
-        time.sleep(5)
-        return start_rsfetcher()
-    return fetcher
+            fetcher.start(CurrentState().current_block_index() + 1)
+            return fetcher
+        except exceptions.InvalidVersion as e1:
+            logger.error(e1)
+            raise e1
+        except Exception as e2:  # pylint: disable=broad-except
+            logger.warning(
+                "Failed to start RSFetcher (%s). Retrying in %s seconds...",
+                e2,
+                retry_delay,
+            )
+            try:
+                fetcher.stop()
+            except Exception as e3:  # pylint: disable=broad-except
+                logger.debug("Failed to stop RSFetcher (%s).", e3)
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, max_delay)
 
 
 def create_events_indexes(db):
