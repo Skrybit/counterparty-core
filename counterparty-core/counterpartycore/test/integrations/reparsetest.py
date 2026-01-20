@@ -185,7 +185,9 @@ def catchup(server_args, api_url, timeout_minutes=20, min_block_index=None):
                     if counterparty_height is not None and counterparty_height >= min_block_index:
                         ready = True
                     else:
-                        print(f"Waiting for block {min_block_index} (current: {counterparty_height})...")
+                        print(
+                            f"Waiting for block {min_block_index} (current: {counterparty_height})..."
+                        )
                         time.sleep(1)
                 else:
                     # Original behavior: just wait for server_ready
