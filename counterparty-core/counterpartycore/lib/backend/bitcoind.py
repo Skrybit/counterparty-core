@@ -131,7 +131,7 @@ def rpc_call(payload, retry=0):
             if response.status_code not in (200, 500):
                 raise exceptions.BitcoindRPCError(str(response.status_code) + " " + response.reason)
             break
-        except (Timeout, ReadTimeout, ConnectionError, ChunkedEncodingError):
+        except (Timeout, ReadTimeout, ConnectionError, ChunkedEncodingError) as e:
             logger.warning(
                 "Could not connect to backend at `%s`. (Attempt: %s)",
                 clean_url_for_log(url),
@@ -139,7 +139,9 @@ def rpc_call(payload, retry=0):
                 stack_info=config.VERBOSE > 0,
             )
             if not interruptible_sleep(5):
-                raise exceptions.BitcoindRPCError("Shutdown requested during connection retry")
+                raise exceptions.BitcoindRPCError(
+                    "Shutdown requested during connection retry"
+                ) from e
         except Exception as e:  # pylint: disable=broad-except
             broken_error = e
             break
