@@ -203,16 +203,19 @@ def get_current_commit_hash(not_from_env=False):
 
 
 def classify_mime_type(mime_type):
+    # Extract base MIME type (remove parameters like codecs)
+    base_mime_type = mime_type.split(";")[0].strip()
+    
     # Types that start with "text/" are textual
     if (
-        mime_type.startswith("text/")
-        or mime_type.startswith("message/")
-        or mime_type.endswith("+xml")
+        base_mime_type.startswith("text/")
+        or base_mime_type.startswith("message/")
+        or base_mime_type.endswith("+xml")
     ):
         return "text"
 
     # List of application types that are textual
-    if mime_type in [
+    if base_mime_type in [
         "application/xml",
         "application/javascript",
         "application/json",
