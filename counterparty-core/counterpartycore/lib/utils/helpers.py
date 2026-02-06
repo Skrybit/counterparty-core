@@ -16,6 +16,38 @@ from counterpartycore.lib import config
 D = decimal.Decimal
 
 
+# Register custom MIME types not in Python's standard library
+def _init_custom_mimetypes():
+    """Register custom MIME types for audio/video formats not in Python's standard library."""
+    mimetypes.add_type("audio/ogg", ".ogg")
+    mimetypes.add_type("audio/ogg", ".oga")
+    mimetypes.add_type("video/ogg", ".ogv")
+    mimetypes.add_type("application/ogg", ".ogx")
+
+
+_init_custom_mimetypes()
+
+
+def parse_mime_type(mime_type: str) -> tuple:
+    """
+    Parse MIME type with optional parameters.
+    Returns (base_type, parameters_dict)
+
+    Example: 'audio/ogg;codecs=opus' -> ('audio/ogg', {'codecs': 'opus'})
+    """
+    if not mime_type:
+        return "", {}
+
+    parts = mime_type.split(";")
+    base_type = parts[0].strip()
+    params = {}
+    for part in parts[1:]:
+        if "=" in part:
+            key, value = part.split("=", 1)
+            params[key.strip()] = value.strip()
+    return base_type, params
+
+
 def chunkify(l, n):  # noqa: E741
     n = max(1, n)
     return [l[i : i + n] for i in range(0, len(l), n)]
@@ -214,10 +246,17 @@ def bytes_to_content(content: bytes, mime_type: str) -> str:
 def check_content(mime_type, content):
     problems = []
     content_mime_type = mime_type or "text/plain"
-    if content_mime_type not in mimetypes.types_map.values():
+
+    # Parse MIME type to handle codec parameters (e.g., audio/ogg;codecs=opus)
+    base_mime_type, params = parse_mime_type(content_mime_type)
+
+    # Validate base MIME type (without parameters)
+    if base_mime_type not in mimetypes.types_map.values():
         problems.append(f"Invalid mime type: {mime_type}")
+
     try:
-        content_to_bytes(content, content_mime_type)
+        # Use base MIME type for content conversion
+        content_to_bytes(content, base_mime_type)
     except Exception as e:  # pylint: disable=broad-exception-caught
         problems.append(f"Error converting description to bytes: {e}")
     return problems
